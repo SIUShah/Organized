@@ -5,6 +5,8 @@ import logging
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPushButton, QSlider, QSplitter, QStatusBar, QToolBar, QVBoxLayout,
@@ -15,6 +17,7 @@ from findcut.domain.models import Project, TextOverlay, new_id
 from findcut.media.ffmpeg import FFmpegAdapter, MediaError
 from findcut.services.export import ExportService
 from findcut.services.timeline import TimelineService
+from findcut.services.templates import available_templates, create_from_template
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +32,13 @@ class FindCutWindow(QMainWindow):
         self.exporter = ExportService(self.media)
         self.timeline_service = TimelineService(self.project)
         self.project_path: Path | None = None
+        self.player = QMediaPlayer(self)
+        self.audio_output = QAudioOutput(self)
+        self.player.setAudioOutput(self.audio_output)
         self._build_ui()
+        self.player.positionChanged.connect(self._player_position_changed)
+        self.player.durationChanged.connect(self._player_duration_changed)
+        self.player.errorOccurred.connect(lambda *_: self.statusBar().showMessage(f"Preview error: {self.player.errorString()}"))
 
     def _build_ui(self) -> None:
         self.setStatusBar(QStatusBar(self))
@@ -54,6 +63,13 @@ class FindCutWindow(QMainWindow):
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("File")
+        template_menu = file_menu.addMenu("New from Template")
+        for template in available_templates():
+            action = QAction(template.name, self)
+            action.setToolTip(template.description)
+            action.triggered.connect(lambda checked=False, key=template.key: self.new_from_template(key))
+            template_menu.addAction(action)
+        file_menu.addSeparator()
         for label, handler, shortcut in (("New Project", self.new_project, "Ctrl+N"), ("Open Project…", self.open_project, "Ctrl+O"), ("Save Project", self.save_project, "Ctrl+S"), ("Save Project As…", self.save_project_as, "Ctrl+Shift+S"), ("Export Edited Video…", self.export_project, "Ctrl+E"), ("Export Selected Clip…", self.export_selected_clip, "Ctrl+Shift+E"), ("Extract Audio…", self.extract_audio, "Ctrl+Alt+E")):
             action = QAction(label, self)
             action.setShortcut(shortcut)
@@ -91,6 +107,7 @@ class FindCutWindow(QMainWindow):
         tools.addWidget(reveal)
         layout.addLayout(tools)
         self.media_list = QListWidget()
+        self.media_list.itemClicked.connect(self.preview_media_item)
         self.media_list.itemDoubleClicked.connect(self.add_selected_to_timeline)
         layout.addWidget(self.media_list)
         return panel
@@ -101,17 +118,21 @@ class FindCutWindow(QMainWindow):
         title = QLabel("PREVIEW")
         title.setObjectName("sectionTitle")
         layout.addWidget(title)
-        self.preview = QLabel("Import media to begin")
-        self.preview.setAlignment(Qt.AlignCenter)
-        self.preview.setMinimumHeight(300)
-        self.preview.setStyleSheet("background:#111827;color:#94a3b8;border-radius:8px;font-size:18px;")
-        layout.addWidget(self.preview, 1)
+        self.video_widget = QVideoWidget()
+        self.video_widget.setMinimumHeight(300)
+        self.video_widget.setStyleSheet("background:#111827;border-radius:8px;")
+        self.player.setVideoOutput(self.video_widget)
+        layout.addWidget(self.video_widget, 1)
         controls = QHBoxLayout()
-        play = QPushButton("Play")
-        play.clicked.connect(lambda: self.statusBar().showMessage("Preview playback is available through the media backend."))
-        controls.addWidget(play)
+        self.play_button = QPushButton("Play")
+        self.play_button.clicked.connect(self.toggle_preview)
+        controls.addWidget(self.play_button)
+        stop = QPushButton("Stop")
+        stop.clicked.connect(self.player.stop)
+        controls.addWidget(stop)
         self.position = QSlider(Qt.Horizontal)
-        self.position.setRange(0, 1000)
+        self.position.setRange(0, 0)
+        self.position.sliderMoved.connect(self.player.setPosition)
         controls.addWidget(self.position, 1)
         layout.addLayout(controls)
         return panel
@@ -158,6 +179,29 @@ class FindCutWindow(QMainWindow):
             except MediaError as exc:
                 QMessageBox.warning(self, "Import failed", str(exc))
 
+    def preview_media_item(self, item: QListWidgetItem) -> None:
+        asset = next((a for a in self.project.media if a.id == item.data(Qt.UserRole)), None)
+        if asset:
+            self.player.setSource(QUrl.fromLocalFile(asset.path))
+            self.player.play()
+            self.play_button.setText("Pause")
+
+    def toggle_preview(self) -> None:
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+            self.play_button.setText("Play")
+        else:
+            self.player.play()
+            self.play_button.setText("Pause")
+
+    def _player_position_changed(self, position: int) -> None:
+        self.position.blockSignals(True)
+        self.position.setValue(position)
+        self.position.blockSignals(False)
+
+    def _player_duration_changed(self, duration: int) -> None:
+        self.position.setRange(0, max(0, duration))
+
     def add_selected_to_timeline(self, item: QListWidgetItem) -> None:
         asset_id = item.data(Qt.UserRole)
         asset = next((a for a in self.project.media if a.id == asset_id), None)
@@ -169,13 +213,24 @@ class FindCutWindow(QMainWindow):
         self._refresh_lists()
         self.statusBar().showMessage(f"Added {Path(asset.path).name} to {track.name}")
 
+    def new_from_template(self, key: str) -> None:
+        self.project = create_from_template(key)
+        self.timeline_service = TimelineService(self.project)
+        self.project_path = None
+        self.media_list.clear()
+        self.timeline.clear()
+        self.player.stop()
+        self.position.setRange(0, 0)
+        self.statusBar().showMessage(f"Created {self.project.name} template")
+
     def new_project(self) -> None:
         self.project = Project()
         self.timeline_service = TimelineService(self.project)
         self.project_path = None
         self.media_list.clear()
         self.timeline.clear()
-        self.preview.setText("Import media to begin")
+        self.player.stop()
+        self.position.setRange(0, 0)
 
     def open_project(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Open FindCut Project", "", "FindCut Project (*.findcut)")
