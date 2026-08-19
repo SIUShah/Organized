@@ -40,6 +40,7 @@ class Clip:
     speed: float = 1.0
     opacity: float = 1.0
     transform: dict[str, float] = field(default_factory=dict)
+    keyframes: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
 
     @property
     def duration(self) -> float:

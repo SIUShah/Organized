@@ -80,7 +80,11 @@ class TimelineRenderer:
                 chain.append(f"hue=h={float(transform['hue']):.4f}")
             if "rotation" in transform:
                 chain.append(f"rotate={float(transform['rotation']):.6f}:fillcolor=black@0")
-            if "opacity" in transform or clip.opacity < 0.999:
+            opacity_points = clip.keyframes.get("opacity", [])
+            if opacity_points:
+                opacity_expr = self._keyframe_expression(opacity_points, float(transform.get("opacity", clip.opacity)))
+                chain.append(f"format=rgba,colorchannelmixer=aa='{opacity_expr}'")
+            elif "opacity" in transform or clip.opacity < 0.999:
                 chain.append(f"format=rgba,colorchannelmixer=aa={float(transform.get('opacity', clip.opacity)):.4f}")
             chain.extend([f"trim=duration={clip_duration:.6f}", "setpts=PTS-STARTPTS"])
             filters.append(",".join(chain) + f"[vclip{input_index}]")
@@ -115,10 +119,11 @@ class TimelineRenderer:
             end = clip.source_out if clip.source_out is not None else asset.duration
             delay = max(0, int(round(clip.timeline_start * 1000)))
             volume = 0.0 if clip.muted else max(0.0, clip.volume)
+            volume_expr = self._keyframe_expression(clip.keyframes.get("volume", []), volume)
             label = f"aclip{input_index}"
             filters.append(
                 f"[{input_index}:a]atrim=start={clip.source_in:.6f}:end={end:.6f},"
-                f"asetpts=PTS-STARTPTS,volume={volume:.4f},adelay={delay}|{delay}[{label}]"
+                f"asetpts=PTS-STARTPTS,volume='{volume_expr}':eval=frame,adelay={delay}|{delay}[{label}]"
             )
             audio_labels.append(f"[{label}]")
             input_index += 1
@@ -153,6 +158,26 @@ class TimelineRenderer:
         if completed.returncode != 0:
             logger.error("Timeline render failed: %s", completed.stderr.strip())
             raise MediaError("Timeline render failed. See details.")
+
+    @staticmethod
+    def _keyframe_expression(points: list[tuple[float, float]], fallback: float) -> str:
+        """Build a piecewise-linear FFmpeg expression evaluated against local clip time."""
+        normalized = sorted((float(time), float(value)) for time, value in points)
+        if not normalized:
+            return f"{fallback:.6f}"
+        expression = f"{normalized[-1][1]:.6f}"
+        for index in range(len(normalized) - 1, -1, -1):
+            time, value = normalized[index]
+            if index == len(normalized) - 1:
+                expression = f"{value:.6f}"
+            else:
+                next_time, next_value = normalized[index + 1]
+                span = max(next_time - time, 0.000001)
+                interpolated = f"({value:.6f}+({next_value:.6f}-{value:.6f})*(t-{time:.6f})/{span:.6f})"
+                expression = f"if(lt(t,{next_time:.6f}),{interpolated},{expression})"
+        first_time, first_value = normalized[0]
+        expression = f"if(lt(t,{first_time:.6f}),{first_value:.6f},{expression})"
+        return expression.replace(",", "\\,")
 
     @staticmethod
     def _asset(project: Project, asset_id: str):

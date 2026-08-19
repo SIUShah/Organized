@@ -34,8 +34,9 @@ class TimelineService:
         if relative <= 0 or relative >= clip.source_out - clip.source_in:
             raise ValueError("Split position must be inside the clip")
         split_source = clip.source_in + relative
-        left = Clip(new_id(), clip.asset_id, clip.track_id, clip.timeline_start, clip.source_in, split_source, clip.volume, clip.muted, clip.speed, clip.opacity, dict(clip.transform))
-        right = Clip(new_id(), clip.asset_id, clip.track_id, timeline_position, split_source, clip.source_out, clip.volume, clip.muted, clip.speed, clip.opacity, dict(clip.transform))
+        left = Clip(new_id(), clip.asset_id, clip.track_id, clip.timeline_start, clip.source_in, split_source, clip.volume, clip.muted, clip.speed, clip.opacity, dict(clip.transform), self._slice_keyframes(clip.keyframes, 0.0, (split_source - clip.source_in) / max(clip.speed, 0.001)))
+        right_offset = (split_source - clip.source_in) / max(clip.speed, 0.001)
+        right = Clip(new_id(), clip.asset_id, clip.track_id, timeline_position, split_source, clip.source_out, clip.volume, clip.muted, clip.speed, clip.opacity, dict(clip.transform), self._slice_keyframes(clip.keyframes, right_offset, clip.duration))
         track.clips = [item for item in track.clips if item.id != clip_id] + [left, right]
         track.clips.sort(key=lambda item: item.timeline_start)
         return left, right
@@ -78,6 +79,36 @@ class TimelineService:
                 candidates.extend([item.timeline_start, item.timeline_start + item.duration])
         nearest = min(candidates, key=lambda value: abs(value - timeline_start))
         return nearest if abs(nearest - timeline_start) <= self.snap_threshold else max(0.0, timeline_start)
+
+    @staticmethod
+    def _slice_keyframes(keyframes: dict[str, list[tuple[float, float]]], start: float, end: float) -> dict[str, list[tuple[float, float]]]:
+        sliced: dict[str, list[tuple[float, float]]] = {}
+        for name, points in keyframes.items():
+            kept = [(round(time - start, 6), value) for time, value in points if start <= time <= end]
+            if kept:
+                sliced[name] = kept
+        return sliced
+
+    def set_keyframe(self, clip_id: str, property_name: str, time: float, value: float) -> list[tuple[float, float]]:
+        if property_name not in {"opacity", "volume", "brightness", "contrast", "saturation", "rotation", "scale", "x", "y"}:
+            raise ValueError(f"Unsupported keyframe property: {property_name}")
+        _, clip = self._find(clip_id)
+        if time < 0 or time > clip.duration + 1e-6:
+            raise ValueError("Keyframe time must be within the clip")
+        points = [(float(t), float(v)) for t, v in clip.keyframes.get(property_name, []) if abs(float(t) - time) > 1e-6]
+        points.append((float(time), float(value)))
+        points.sort(key=lambda item: item[0])
+        clip.keyframes[property_name] = points
+        return points
+
+    def remove_keyframe(self, clip_id: str, property_name: str, time: float) -> list[tuple[float, float]]:
+        _, clip = self._find(clip_id)
+        points = [(float(t), float(v)) for t, v in clip.keyframes.get(property_name, []) if abs(float(t) - time) > 1e-6]
+        if points:
+            clip.keyframes[property_name] = points
+        else:
+            clip.keyframes.pop(property_name, None)
+        return points
 
     def add_transition(self, left_clip_id: str, right_clip_id: str, kind: str = "fade", duration: float = 0.5) -> Transition:
         left_track, left = self._find(left_clip_id)

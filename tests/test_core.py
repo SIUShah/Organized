@@ -158,3 +158,24 @@ def test_fade_transition_requires_adjacent_video_clips():
     transition = TimelineService(project).add_transition(left.id, right.id, duration=0.4)
     assert transition.kind == "fade"
     assert transition.duration == 0.4
+
+def test_keyframes_are_sorted_and_serializable():
+    from findcut.services.timeline import TimelineService
+
+    project = Project()
+    asset = project.add_asset("sample.mp4", "video", duration=4.0)
+    track = next(track for track in project.tracks if track.kind == "video")
+    clip = project.add_clip(asset.id, track.id, 0.0, 0.0, 4.0)
+    service = TimelineService(project)
+    assert service.set_keyframe(clip.id, "opacity", 3.0, 0.2) == [(3.0, 0.2)]
+    assert service.set_keyframe(clip.id, "opacity", 0.0, 1.0) == [(0.0, 1.0), (3.0, 0.2)]
+    restored = Project.from_dict(project.to_dict())
+    assert restored.tracks[0].clips[0].keyframes["opacity"] == [[0.0, 1.0], [3.0, 0.2]] or restored.tracks[0].clips[0].keyframes["opacity"] == [(0.0, 1.0), (3.0, 0.2)]
+
+
+def test_keyframe_expression_contains_piecewise_interpolation():
+    from findcut.media.renderer import TimelineRenderer
+
+    expression = TimelineRenderer._keyframe_expression([(0.0, 1.0), (2.0, 0.0)], 1.0)
+    assert "lt(t" in expression
+    assert "0.000000" in expression
