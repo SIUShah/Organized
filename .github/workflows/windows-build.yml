@@ -30,12 +30,23 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force runtime | Out-Null
-          Invoke-WebRequest -Uri https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -OutFile ffmpeg.zip
-          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-expanded
+          $uri = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+          $downloaded = $false
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            try {
+              Write-Host "Downloading FFmpeg attempt $attempt of 5"
+              Invoke-WebRequest -Uri $uri -OutFile ffmpeg.zip -UseBasicParsing -TimeoutSec 120
+              if ((Get-Item ffmpeg.zip).Length -gt 1000000) { $downloaded = $true; break }
+            } catch { Write-Warning $_ }
+            Start-Sleep -Seconds (10 * $attempt)
+          }
+          if (-not $downloaded) { throw 'FFmpeg download failed after five attempts.' }
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-expanded -Force
           $bin = Get-ChildItem ffmpeg-expanded -Directory | Select-Object -First 1
           Copy-Item "$($bin.FullName)\bin\ffmpeg.exe" runtime\ffmpeg.exe
           Copy-Item "$($bin.FullName)\bin\ffprobe.exe" runtime\ffprobe.exe
           Copy-Item "$($bin.FullName)\LICENSE.txt" runtime\FFmpeg-LICENSE.txt -ErrorAction SilentlyContinue
+          if (-not (Test-Path runtime\ffmpeg.exe) -or -not (Test-Path runtime\ffprobe.exe)) { throw 'FFmpeg binaries were not staged.' }
 
       - name: Build application directory
         shell: pwsh
