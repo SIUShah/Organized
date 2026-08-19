@@ -106,3 +106,25 @@ def test_whisper_srt_formatting_and_model_manager(tmp_path: Path):
     assert not manager.is_installed("tiny")
     target = write_srt([{"start": 1.25, "end": 3.5, "text": "Hello FindCut"}], tmp_path / "captions.srt")
     assert target.read_text(encoding="utf-8") == "1\n00:00:01,250 --> 00:00:03,500\nHello FindCut\n"
+
+
+def test_timeline_renderer_mixes_audio_and_layers_video(tmp_path: Path):
+    from findcut.media.renderer import TimelineRenderer
+    from findcut.domain.models import Track
+
+    video = tmp_path / "video.mp4"
+    audio = tmp_path / "voice.wav"
+    output = tmp_path / "mixed.mp4"
+    subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=green:s=160x120:d=1", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-shortest", "-pix_fmt", "yuv420p", str(video)], capture_output=True, check=True)
+    subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.6", str(audio)], capture_output=True, check=True)
+    project = Project()
+    video_asset = project.add_asset(str(video), "video", duration=1.0, width=160, height=120, fps=25.0)
+    audio_asset = project.add_asset(str(audio), "audio", duration=0.6, sample_rate=44100, channels=1)
+    video_track = next(track for track in project.tracks if track.kind == "video")
+    audio_track = next(track for track in project.tracks if track.kind == "audio")
+    project.add_clip(video_asset.id, video_track.id, 0.0, 0.0, 1.0)
+    project.add_clip(audio_asset.id, audio_track.id, 0.2, 0.0, 0.6)
+    TimelineRenderer().render(project, output)
+    probe = FFmpegAdapter().probe(output)
+    assert output.exists()
+    assert probe.duration > 0.8
