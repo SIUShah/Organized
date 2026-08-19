@@ -17,6 +17,7 @@ from findcut.domain.models import Project, TextOverlay, new_id
 from findcut.media.ffmpeg import FFmpegAdapter, MediaError
 from findcut.media.waveform import WaveformRenderer
 from findcut.media.levels import AudioLevelAnalyzer
+from findcut.media.analysis import MediaAnalyzer
 from findcut.services.export import ExportService
 from findcut.services.timeline import TimelineService
 from findcut.services.templates import available_templates, create_from_template
@@ -35,6 +36,7 @@ class FindCutWindow(QMainWindow):
         self.media = FFmpegAdapter()
         self.waveforms = WaveformRenderer(self.media)
         self.levels = AudioLevelAnalyzer(self.media)
+        self.analyzer = MediaAnalyzer(self.media)
         self.exporter = ExportService(self.media)
         self.timeline_service = TimelineService(self.project)
         self.project_path: Path | None = None
@@ -107,6 +109,12 @@ class FindCutWindow(QMainWindow):
         fade = QAction("Add Fade Transition to Next Clip", self)
         fade.triggered.connect(self.add_fade_transition)
         edit_menu.addAction(fade)
+        silence = QAction("Remove Detected Silence…", self)
+        silence.triggered.connect(self.remove_detected_silence)
+        edit_menu.addAction(silence)
+        scenes = QAction("Detect Scene Changes…", self)
+        scenes.triggered.connect(self.detect_scene_changes)
+        edit_menu.addAction(scenes)
         file_menu.addSeparator()
         ai_menu = file_menu.addMenu("AI Tools")
         install_model = QAction("Install Whisper Model…", self)
@@ -446,6 +454,55 @@ class FindCutWindow(QMainWindow):
             dialog.exec()
         except MediaError as exc:
             QMessageBox.warning(self, "Waveform failed", str(exc))
+
+    def remove_detected_silence(self) -> None:
+        item = self.timeline.currentItem()
+        if not item:
+            self.statusBar().showMessage("Select an audio or video clip first.")
+            return
+        try:
+            _, clip = self.timeline_service._find(item.data(Qt.UserRole))
+            asset = next((candidate for candidate in self.project.media if candidate.id == clip.asset_id), None)
+            if asset is None:
+                raise ValueError("Media asset not found")
+            ranges = self.analyzer.detect_silence(asset.path)
+            local_ranges = []
+            clip_end = clip.source_out if clip.source_out is not None else clip.source_in + clip.duration * clip.speed
+            for silence in ranges:
+                start = max(silence.start, clip.source_in)
+                end = min(silence.end, clip_end)
+                if end > start:
+                    local_ranges.append(((start - clip.source_in) / max(clip.speed, 0.001), (end - clip.source_in) / max(clip.speed, 0.001)))
+            if not local_ranges:
+                QMessageBox.information(self, "Silence removal", "No removable silence was detected inside this clip.")
+                return
+            answer = QMessageBox.question(self, "Remove silence", f"Detected {len(local_ranges)} silent range(s). Remove them non-destructively?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            replacement = self.timeline_service.remove_silence(clip.id, local_ranges)
+            self._refresh_lists()
+            self.statusBar().showMessage(f"Removed silence and created {len(replacement)} retained segment(s)")
+        except (ValueError, MediaError) as exc:
+            QMessageBox.warning(self, "Silence removal failed", str(exc))
+
+    def detect_scene_changes(self) -> None:
+        item = self.media_list.currentItem()
+        asset = next((candidate for candidate in self.project.media if item and candidate.id == item.data(Qt.UserRole)), None)
+        if asset is None:
+            QMessageBox.information(self, "Scene detection", "Select a video in the media bin first.")
+            return
+        try:
+            markers = self.analyzer.detect_scenes(asset.path)
+        except MediaError as exc:
+            QMessageBox.warning(self, "Scene detection failed", str(exc))
+            return
+        if not markers:
+            QMessageBox.information(self, "Scene detection", "No scene changes exceeded the detection threshold.")
+            return
+        preview = ", ".join(f"{marker.time:.2f}s" for marker in markers[:20])
+        suffix = " …" if len(markers) > 20 else ""
+        QMessageBox.information(self, "Scene detection", f"Detected {len(markers)} scene marker(s):\n{preview}{suffix}")
+        self.statusBar().showMessage(f"Detected {len(markers)} scene changes")
 
     def show_audio_levels(self) -> None:
         item = self.media_list.currentItem()

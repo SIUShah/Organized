@@ -212,3 +212,31 @@ def test_media_engine_registry_has_safe_fallback():
     assert statuses[0].name == "FFmpeg CLI"
     assert statuses[0].available is True
     assert registry.preferred().name in {"FFmpeg CLI", "libopenshot", "GStreamer Editing Services"}
+
+
+def test_media_analyzer_detects_silence_and_scenes(tmp_path: Path):
+    from findcut.media.analysis import MediaAnalyzer
+
+    audio = tmp_path / "speech-gaps.wav"
+    subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.8", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-filter_complex", "[1:a]atrim=duration=0.5[s];[0:a][s]concat=n=2:v=0:a=1", "-t", "1.3", str(audio)], capture_output=True, check=True)
+    silence = MediaAnalyzer().detect_silence(audio, min_duration=0.25)
+    assert silence
+    assert silence[0].duration >= 0.25
+
+    video = tmp_path / "scenes.mp4"
+    subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=red:s=160x120:d=0.5", "-f", "lavfi", "-i", "color=c=blue:s=160x120:d=0.5", "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0", "-pix_fmt", "yuv420p", str(video)], capture_output=True, check=True)
+    markers = MediaAnalyzer().detect_scenes(video, threshold=0.1)
+    assert markers
+
+
+def test_remove_silence_keeps_content_and_closes_timeline_gaps():
+    from findcut.services.timeline import TimelineService
+
+    project = Project()
+    asset = project.add_asset("speech.wav", "audio", duration=5.0)
+    track = next(track for track in project.tracks if track.kind == "audio")
+    clip = project.add_clip(asset.id, track.id, 0.0, 0.0, 5.0)
+    replacement = TimelineService(project).remove_silence(clip.id, [(1.0, 2.0), (3.0, 3.5)], padding=0.0)
+    assert len(replacement) == 3
+    assert replacement[0].timeline_start == 0.0
+    assert replacement[1].timeline_start == replacement[0].duration

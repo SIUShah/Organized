@@ -89,6 +89,39 @@ class TimelineService:
                 sliced[name] = kept
         return sliced
 
+    def remove_silence(self, clip_id: str, silence_ranges: list[tuple[float, float]], padding: float = 0.08) -> list[Clip]:
+        track, clip = self._find(clip_id)
+        if not silence_ranges:
+            return [clip]
+        if clip.source_out is None:
+            raise ValueError("Silence removal requires a known clip duration")
+        duration = clip.duration
+        normalized = sorted((max(0.0, float(start)), min(duration, float(end))) for start, end in silence_ranges if end > start)
+        keep: list[tuple[float, float]] = []
+        cursor = 0.0
+        for start, end in normalized:
+            start = max(cursor, start - padding)
+            end = min(duration, end + padding)
+            if start > cursor:
+                keep.append((cursor, start))
+            cursor = max(cursor, end)
+        if cursor < duration:
+            keep.append((cursor, duration))
+        keep = [(start, end) for start, end in keep if end - start >= 0.08]
+        if not keep:
+            raise ValueError("Silence analysis removed the entire clip")
+        replacement: list[Clip] = []
+        timeline_cursor = clip.timeline_start
+        for start, end in keep:
+            source_in = clip.source_in + start * clip.speed
+            source_out = clip.source_in + end * clip.speed
+            new_clip = Clip(new_id(), clip.asset_id, clip.track_id, timeline_cursor, source_in, source_out, clip.volume, clip.muted, clip.speed, clip.opacity, dict(clip.transform), self._slice_keyframes(clip.keyframes, start, end))
+            replacement.append(new_clip)
+            timeline_cursor += new_clip.duration
+        track.clips = [item for item in track.clips if item.id != clip.id] + replacement
+        track.clips.sort(key=lambda item: item.timeline_start)
+        return replacement
+
     def set_keyframe(self, clip_id: str, property_name: str, time: float, value: float) -> list[tuple[float, float]]:
         if property_name not in {"opacity", "volume", "brightness", "contrast", "saturation", "rotation", "scale", "x", "y"}:
             raise ValueError(f"Unsupported keyframe property: {property_name}")
