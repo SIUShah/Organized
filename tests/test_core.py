@@ -128,3 +128,20 @@ def test_timeline_renderer_mixes_audio_and_layers_video(tmp_path: Path):
     probe = FFmpegAdapter().probe(output)
     assert output.exists()
     assert probe.duration > 0.8
+
+
+def test_timeline_snapping_and_track_creation():
+    from findcut.services.timeline import TimelineService
+
+    project = Project()
+    asset = project.add_asset("sample.mp4", "video", duration=10.0)
+    track = next(track for track in project.tracks if track.kind == "video")
+    first = project.add_clip(asset.id, track.id, 0.0, 0.0, 2.0)
+    second = project.add_clip(asset.id, track.id, 3.0, 0.0, 2.0)
+    service = TimelineService(project, snap_threshold=0.2)
+    service.move(second.id, 2.08)
+    assert second.timeline_start == 2.0
+    added = service.add_track("video")
+    assert added.kind == "video"
+    service.move(first.id, 0.5, track_id=added.id)
+    assert first.track_id == added.id

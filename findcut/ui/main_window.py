@@ -82,6 +82,18 @@ class FindCutWindow(QMainWindow):
         open_output = QAction("Open Output Folder", self)
         open_output.triggered.connect(self.open_output_folder)
         file_menu.addAction(open_output)
+        edit_menu = self.menuBar().addMenu("Edit")
+        snap_action = QAction("Snap to clip boundaries", self)
+        snap_action.setCheckable(True)
+        snap_action.setChecked(True)
+        snap_action.triggered.connect(self.toggle_snapping)
+        edit_menu.addAction(snap_action)
+        add_video_track = QAction("Add Video Track", self)
+        add_video_track.triggered.connect(lambda: self.add_track("video"))
+        edit_menu.addAction(add_video_track)
+        add_audio_track = QAction("Add Audio Track", self)
+        add_audio_track.triggered.connect(lambda: self.add_track("audio"))
+        edit_menu.addAction(add_audio_track)
         file_menu.addSeparator()
         ai_menu = file_menu.addMenu("AI Tools")
         install_model = QAction("Install Whisper Model…", self)
@@ -421,6 +433,15 @@ class FindCutWindow(QMainWindow):
             self.statusBar().showMessage("Clip split at its midpoint")
         except (ValueError, ZeroDivisionError) as exc:
             QMessageBox.warning(self, "Split failed", str(exc))
+
+    def toggle_snapping(self, enabled: bool) -> None:
+        self.timeline_service.snapping_enabled = enabled
+        self.statusBar().showMessage("Snapping enabled" if enabled else "Snapping disabled")
+
+    def add_track(self, kind: str) -> None:
+        track = self.timeline_service.add_track(kind)
+        self._refresh_lists()
+        self.statusBar().showMessage(f"Added {track.name}")
 
     def undo(self) -> None:
         self.statusBar().showMessage("Undo history is reserved for the command stack milestone.")
