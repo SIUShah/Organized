@@ -97,6 +97,12 @@ class FindCutWindow(QMainWindow):
         properties = QAction("Clip Properties…", self)
         properties.triggered.connect(self.edit_clip_properties)
         edit_menu.addAction(properties)
+        keyframe = QAction("Add Keyframe…", self)
+        keyframe.triggered.connect(self.add_keyframe)
+        edit_menu.addAction(keyframe)
+        fade = QAction("Add Fade Transition to Next Clip", self)
+        fade.triggered.connect(self.add_fade_transition)
+        edit_menu.addAction(fade)
         file_menu.addSeparator()
         ai_menu = file_menu.addMenu("AI Tools")
         install_model = QAction("Install Whisper Model…", self)
@@ -475,6 +481,54 @@ class FindCutWindow(QMainWindow):
         self._refresh_lists()
         self.statusBar().showMessage("Clip properties updated")
 
+    def add_keyframe(self) -> None:
+        item = self.timeline.currentItem()
+        if not item:
+            self.statusBar().showMessage("Select a timeline clip first.")
+            return
+        try:
+            _, clip = self.timeline_service._find(item.data(Qt.UserRole))
+        except ValueError as exc:
+            QMessageBox.warning(self, "Keyframe", str(exc))
+            return
+        properties = ["opacity", "volume", "brightness", "contrast", "saturation", "rotation", "scale", "x", "y"]
+        property_name, ok = QInputDialog.getItem(self, "Add Keyframe", "Property:", properties, 0, False)
+        if not ok:
+            return
+        time_raw, ok = QInputDialog.getText(self, "Add Keyframe", f"Time in clip (0–{clip.duration:.3f}s):", text="0")
+        if not ok:
+            return
+        value_raw, ok = QInputDialog.getText(self, "Add Keyframe", "Value:", text="1.0")
+        if not ok:
+            return
+        try:
+            points = self.timeline_service.set_keyframe(clip.id, property_name, float(time_raw), float(value_raw))
+        except (ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Keyframe failed", str(exc))
+            return
+        self._refresh_lists()
+        self.statusBar().showMessage(f"{property_name} keyframe added ({len(points)} points)")
+
+    def add_fade_transition(self) -> None:
+        item = self.timeline.currentItem()
+        if not item:
+            self.statusBar().showMessage("Select the first clip in a pair.")
+            return
+        try:
+            track, clip = self.timeline_service._find(item.data(Qt.UserRole))
+            following = sorted((candidate for candidate in track.clips if candidate.timeline_start >= clip.timeline_start and candidate.id != clip.id), key=lambda candidate: candidate.timeline_start)
+            next_clip = following[0] if following else None
+            if next_clip is None:
+                raise ValueError("No following clip found on this track")
+            duration_raw, ok = QInputDialog.getText(self, "Fade Transition", "Duration (seconds):", text="0.5")
+            if not ok:
+                return
+            transition = self.timeline_service.add_transition(clip.id, next_clip.id, duration=float(duration_raw))
+        except (ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Transition failed", str(exc))
+            return
+        self.statusBar().showMessage(f"Fade transition added: {transition.duration:.2f}s")
+
     def toggle_snapping(self, enabled: bool) -> None:
         self.timeline_service.snapping_enabled = enabled
         self.statusBar().showMessage("Snapping enabled" if enabled else "Snapping disabled")
@@ -501,6 +555,8 @@ class FindCutWindow(QMainWindow):
             for clip in track.clips:
                 asset = next((a for a in self.project.media if a.id == clip.asset_id), None)
                 if asset:
-                    timeline_item = QListWidgetItem(f"{track.name}  |  {Path(asset.path).name}  |  {clip.timeline_start:.1f}s – {clip.timeline_start + clip.duration:.1f}s")
+                    keyframe_count = sum(len(points) for points in clip.keyframes.values())
+                    animation_marker = f"  |  {keyframe_count} keyframes" if keyframe_count else ""
+                    timeline_item = QListWidgetItem(f"{track.name}  |  {Path(asset.path).name}  |  {clip.timeline_start:.1f}s – {clip.timeline_start + clip.duration:.1f}s{animation_marker}")
                     timeline_item.setData(Qt.UserRole, clip.id)
                     self.timeline.addItem(timeline_item)
