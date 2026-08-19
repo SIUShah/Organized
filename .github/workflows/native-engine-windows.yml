@@ -1,0 +1,71 @@
+name: Build Native Media Engine
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  libopenshot-msys2:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up MSYS2 MinGW64
+        uses: msys2/setup-msys2@96af136ff72603acbec7ff9b845d0716a90d5f27 # pinned main
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            base-devel
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-ffmpeg
+            mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-multimedia
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-python-pip
+            mingw-w64-x86_64-swig
+            mingw-w64-x86_64-zeromq
+            mingw-w64-x86_64-jsoncpp
+            mingw-w64-x86_64-freetype
+            mingw-w64-x86_64-opencv
+
+      - name: Build libopenshot-audio
+        run: |
+          git clone --depth 1 https://github.com/OpenShot/libopenshot-audio.git ../libopenshot-audio
+          cmake -S ../libopenshot-audio -B ../libopenshot-audio/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/native-prefix"
+          cmake --build ../libopenshot-audio/build --parallel 2
+          cmake --install ../libopenshot-audio/build
+
+      - name: Build libopenshot with Python bindings
+        run: |
+          git clone --depth 1 https://github.com/OpenShot/libopenshot.git ../libopenshot
+          cmake -S ../libopenshot -B ../libopenshot/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/native-prefix" -DLIBOPENSHOT_AUDIO_DIR="$PWD/native-prefix" -DUSE_QT6=ON -DENABLE_TESTS=OFF -DPYTHON_BINDINGS=ON
+          cmake --build ../libopenshot/build --parallel 2
+          cmake --install ../libopenshot/build
+
+      - name: Stage native runtime
+        run: |
+          mkdir -p native-engine
+          cp -r native-prefix/bin native-engine/ || true
+          cp -r native-prefix/lib native-engine/ || true
+          cp -r native-prefix/include native-engine/ || true
+          cp -r native-prefix/lib/python* native-engine/ || true
+          printf '%s\n' 'libopenshot and libopenshot-audio built with MSYS2/MinGW64.' > native-engine/BUILD-PROVENANCE.txt
+          printf '%s\n' 'See THIRD_PARTY_LICENSES and docs/ENGINE_RESEARCH.md before redistribution.' >> native-engine/BUILD-PROVENANCE.txt
+
+      - name: Upload native-engine artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: FindCut-native-engine-msys2
+          path: native-engine
+          if-no-files-found: error
+          compression-level: 9
