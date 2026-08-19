@@ -94,6 +94,9 @@ class FindCutWindow(QMainWindow):
         add_audio_track = QAction("Add Audio Track", self)
         add_audio_track.triggered.connect(lambda: self.add_track("audio"))
         edit_menu.addAction(add_audio_track)
+        properties = QAction("Clip Properties…", self)
+        properties.triggered.connect(self.edit_clip_properties)
+        edit_menu.addAction(properties)
         file_menu.addSeparator()
         ai_menu = file_menu.addMenu("AI Tools")
         install_model = QAction("Install Whisper Model…", self)
@@ -433,6 +436,44 @@ class FindCutWindow(QMainWindow):
             self.statusBar().showMessage("Clip split at its midpoint")
         except (ValueError, ZeroDivisionError) as exc:
             QMessageBox.warning(self, "Split failed", str(exc))
+
+    def edit_clip_properties(self) -> None:
+        item = self.timeline.currentItem()
+        if not item:
+            self.statusBar().showMessage("Select a timeline clip first.")
+            return
+        try:
+            _, clip = self.timeline_service._find(item.data(Qt.UserRole))
+        except ValueError as exc:
+            QMessageBox.warning(self, "Clip properties", str(exc))
+            return
+        transform = clip.transform
+        fields = [
+            ("Speed", "speed", float(clip.speed)),
+            ("Opacity", "opacity", float(transform.get("opacity", clip.opacity))),
+            ("Rotation radians", "rotation", float(transform.get("rotation", 0.0))),
+            ("Brightness", "brightness", float(transform.get("brightness", 0.0))),
+            ("Contrast", "contrast", float(transform.get("contrast", 1.0))),
+            ("Saturation", "saturation", float(transform.get("saturation", 1.0))),
+        ]
+        for label, key, value in fields:
+            raw, ok = QInputDialog.getText(self, "Clip Properties", f"{label}:", text=str(value))
+            if not ok:
+                return
+            try:
+                parsed = float(raw)
+            except ValueError:
+                QMessageBox.warning(self, "Clip properties", f"{label} must be numeric.")
+                return
+            if key == "speed":
+                clip.speed = max(0.05, parsed)
+            elif key == "opacity":
+                clip.opacity = max(0.0, min(1.0, parsed))
+                transform[key] = clip.opacity
+            else:
+                transform[key] = parsed
+        self._refresh_lists()
+        self.statusBar().showMessage("Clip properties updated")
 
     def toggle_snapping(self, enabled: bool) -> None:
         self.timeline_service.snapping_enabled = enabled
