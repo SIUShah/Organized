@@ -35,6 +35,7 @@ jobs:
             mingw-w64-x86_64-python-pip
             mingw-w64-x86_64-swig
             mingw-w64-x86_64-zeromq
+            mingw-w64-x86_64-cppzmq
             mingw-w64-x86_64-jsoncpp
             mingw-w64-x86_64-freetype
             mingw-w64-x86_64-opencv
