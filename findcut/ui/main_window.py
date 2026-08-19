@@ -18,8 +18,10 @@ from findcut.media.ffmpeg import FFmpegAdapter, MediaError
 from findcut.media.waveform import WaveformRenderer
 from findcut.media.levels import AudioLevelAnalyzer
 from findcut.media.analysis import MediaAnalyzer
+from findcut.media.engines import MediaEngineRegistry
 from findcut.services.export import ExportService
 from findcut.services.timeline import TimelineService
+from findcut.services.history import ProjectHistory
 from findcut.services.templates import available_templates, create_from_template
 from findcut.ai.model_manager import ModelManager
 from findcut.ai.transcription import transcribe, write_ass, write_srt
@@ -37,10 +39,12 @@ class FindCutWindow(QMainWindow):
         self.waveforms = WaveformRenderer(self.media)
         self.levels = AudioLevelAnalyzer(self.media)
         self.analyzer = MediaAnalyzer(self.media)
+        self.engines = MediaEngineRegistry()
         self.exporter = ExportService(self.media)
         self.timeline_service = TimelineService(self.project)
         self.project_path: Path | None = None
         self.model_manager = ModelManager()
+        self.history = ProjectHistory(limit=50)
         self.player = QMediaPlayer(self)
         self.audio_output = QAudioOutput(self)
         self.player.setAudioOutput(self.audio_output)
@@ -48,6 +52,14 @@ class FindCutWindow(QMainWindow):
         self.player.positionChanged.connect(self._player_position_changed)
         self.player.durationChanged.connect(self._player_duration_changed)
         self.player.errorOccurred.connect(lambda *_: self.statusBar().showMessage(f"Preview error: {self.player.errorString()}"))
+
+    def _checkpoint(self) -> None:
+        self.history.checkpoint(self.project)
+
+    def _restore_project(self, project: Project) -> None:
+        self.project = project
+        self.timeline_service = TimelineService(self.project)
+        self._refresh_lists()
 
     def _build_ui(self) -> None:
         self.setStatusBar(QStatusBar(self))
@@ -84,6 +96,9 @@ class FindCutWindow(QMainWindow):
             action.setShortcut(shortcut)
             action.triggered.connect(handler)
             file_menu.addAction(action)
+        engine_status = QAction("Media Engine Status…", self)
+        engine_status.triggered.connect(self.show_engine_status)
+        file_menu.addAction(engine_status)
         file_menu.addSeparator()
         open_output = QAction("Open Output Folder", self)
         open_output.triggered.connect(self.open_output_folder)
@@ -215,7 +230,10 @@ class FindCutWindow(QMainWindow):
         self._import_paths(paths)
 
     def _import_paths(self, paths: list[str]) -> None:
-        for path in paths:
+        valid_paths = [path for path in paths if Path(path).exists()]
+        if valid_paths:
+            self._checkpoint()
+        for path in valid_paths:
             try:
                 probe = self.media.probe(path)
                 asset = self.project.add_asset(path, probe.kind, duration=probe.duration, width=probe.width, height=probe.height, fps=probe.fps, sample_rate=probe.sample_rate, channels=probe.channels, metadata=probe.metadata)
@@ -256,11 +274,13 @@ class FindCutWindow(QMainWindow):
             return
         track = next((t for t in self.project.tracks if t.kind == asset.kind), self.project.tracks[0])
         end = max((c.timeline_start + c.duration for c in track.clips), default=0.0)
+        self._checkpoint()
         clip = self.project.add_clip(asset.id, track.id, end, 0.0, asset.duration)
         self._refresh_lists()
         self.statusBar().showMessage(f"Added {Path(asset.path).name} to {track.name}")
 
     def new_from_template(self, key: str) -> None:
+        self._checkpoint()
         self.project = create_from_template(key)
         self.timeline_service = TimelineService(self.project)
         self.project_path = None
@@ -271,6 +291,7 @@ class FindCutWindow(QMainWindow):
         self.statusBar().showMessage(f"Created {self.project.name} template")
 
     def new_project(self) -> None:
+        self._checkpoint()
         self.project = Project()
         self.timeline_service = TimelineService(self.project)
         self.project_path = None
@@ -284,7 +305,9 @@ class FindCutWindow(QMainWindow):
         if not path:
             return
         try:
-            self.project = Project.load(path)
+            loaded_project = Project.load(path)
+            self._checkpoint()
+            self.project = loaded_project
             self.timeline_service = TimelineService(self.project)
             self.project_path = Path(path)
             self._refresh_lists()
@@ -426,6 +449,21 @@ class FindCutWindow(QMainWindow):
         self.statusBar().showMessage(f"File saved: {path}")
         QMessageBox.information(self, "File saved", f"Saved to:\n{path}")
 
+    def show_engine_status(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("FindCut Media Engines")
+        dialog.resize(640, 220)
+        layout = QVBoxLayout(dialog)
+        preferred = self.engines.preferred()
+        layout.addWidget(QLabel(f"Preferred engine: {preferred.name}"))
+        for status in self.engines.statuses():
+            state = "Available" if status.available else "Not installed"
+            layout.addWidget(QLabel(f"{status.name}: {state} — {status.reason}"))
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
+
     def open_output_folder(self) -> None:
         folder = str(self.project_path.parent if self.project_path else Path.home())
         QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
@@ -436,6 +474,7 @@ class FindCutWindow(QMainWindow):
             self.statusBar().showMessage("Select a media file first.")
             return
         asset_id = item.data(Qt.UserRole)
+        self._checkpoint()
         self.project.media = [asset for asset in self.project.media if asset.id != asset_id]
         for track in self.project.tracks:
             track.clips = [clip for clip in track.clips if clip.asset_id != asset_id]
@@ -564,6 +603,7 @@ class FindCutWindow(QMainWindow):
     def add_text(self) -> None:
         text, ok = QInputDialog.getText(self, "Add text", "Text:")
         if ok and text:
+            self._checkpoint()
             self.project.text_overlays.append(TextOverlay(new_id(), text, 0.0, 5.0))
             self.statusBar().showMessage("Text overlay added to the project")
 
@@ -573,6 +613,7 @@ class FindCutWindow(QMainWindow):
             self.statusBar().showMessage("Select a timeline clip first.")
             return
         try:
+            self._checkpoint()
             self.timeline_service.delete(item.data(Qt.UserRole))
             self._refresh_lists()
             self.statusBar().showMessage("Clip deleted non-destructively")
@@ -585,6 +626,7 @@ class FindCutWindow(QMainWindow):
             self.statusBar().showMessage("Select a timeline clip first.")
             return
         try:
+            self._checkpoint()
             clip_id = item.data(Qt.UserRole)
             _, clip = self.timeline_service._find(clip_id)
             self.timeline_service.split(clip_id, clip.timeline_start + clip.duration / 2.0)
@@ -603,6 +645,7 @@ class FindCutWindow(QMainWindow):
         except ValueError as exc:
             QMessageBox.warning(self, "Clip properties", str(exc))
             return
+        self._checkpoint()
         transform = clip.transform
         fields = [
             ("Speed", "speed", float(clip.speed)),
@@ -641,6 +684,7 @@ class FindCutWindow(QMainWindow):
         except ValueError as exc:
             QMessageBox.warning(self, "Keyframe", str(exc))
             return
+        self._checkpoint()
         properties = ["opacity", "volume", "brightness", "contrast", "saturation", "rotation", "scale", "x", "y"]
         property_name, ok = QInputDialog.getItem(self, "Add Keyframe", "Property:", properties, 0, False)
         if not ok:
@@ -673,6 +717,7 @@ class FindCutWindow(QMainWindow):
             duration_raw, ok = QInputDialog.getText(self, "Fade Transition", "Duration (seconds):", text="0.5")
             if not ok:
                 return
+            self._checkpoint()
             transition = self.timeline_service.add_transition(clip.id, next_clip.id, duration=float(duration_raw))
         except (ValueError, TypeError) as exc:
             QMessageBox.warning(self, "Transition failed", str(exc))
@@ -684,15 +729,26 @@ class FindCutWindow(QMainWindow):
         self.statusBar().showMessage("Snapping enabled" if enabled else "Snapping disabled")
 
     def add_track(self, kind: str) -> None:
+        self._checkpoint()
         track = self.timeline_service.add_track(kind)
         self._refresh_lists()
         self.statusBar().showMessage(f"Added {track.name}")
 
     def undo(self) -> None:
-        self.statusBar().showMessage("Undo history is reserved for the command stack milestone.")
+        restored = self.history.undo(self.project)
+        if restored is None:
+            self.statusBar().showMessage("Nothing to undo")
+            return
+        self._restore_project(restored)
+        self.statusBar().showMessage("Undo complete")
 
     def redo(self) -> None:
-        self.statusBar().showMessage("Redo history is reserved for the command stack milestone.")
+        restored = self.history.redo(self.project)
+        if restored is None:
+            self.statusBar().showMessage("Nothing to redo")
+            return
+        self._restore_project(restored)
+        self.statusBar().showMessage("Redo complete")
 
     def _refresh_lists(self) -> None:
         self.media_list.clear()
