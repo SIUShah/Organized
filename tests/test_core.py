@@ -191,3 +191,14 @@ def test_waveform_renderer_generates_png(tmp_path: Path):
     assert result == output
     assert output.exists()
     assert output.stat().st_size > 100
+
+
+def test_audio_level_analyzer_reports_real_levels(tmp_path: Path):
+    from findcut.media.levels import AudioLevelAnalyzer
+
+    source = tmp_path / "tone.wav"
+    subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.4", str(source)], capture_output=True, check=True)
+    levels = AudioLevelAnalyzer().analyze(source)
+    assert levels.mean_db < 0
+    assert levels.peak_db < 0
+    assert levels.peak_db >= levels.mean_db

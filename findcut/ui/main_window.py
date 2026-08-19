@@ -10,12 +10,13 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPushButton, QSlider, QSplitter, QStatusBar, QToolBar, QVBoxLayout,
-    QWidget, QInputDialog, QDialog, QDialogButtonBox,
+    QWidget, QInputDialog, QDialog, QDialogButtonBox, QProgressBar,
 )
 
 from findcut.domain.models import Project, TextOverlay, new_id
 from findcut.media.ffmpeg import FFmpegAdapter, MediaError
 from findcut.media.waveform import WaveformRenderer
+from findcut.media.levels import AudioLevelAnalyzer
 from findcut.services.export import ExportService
 from findcut.services.timeline import TimelineService
 from findcut.services.templates import available_templates, create_from_template
@@ -33,6 +34,7 @@ class FindCutWindow(QMainWindow):
         self.project = Project()
         self.media = FFmpegAdapter()
         self.waveforms = WaveformRenderer(self.media)
+        self.levels = AudioLevelAnalyzer(self.media)
         self.exporter = ExportService(self.media)
         self.timeline_service = TimelineService(self.project)
         self.project_path: Path | None = None
@@ -51,7 +53,7 @@ class FindCutWindow(QMainWindow):
         toolbar = QToolBar("Editing", self)
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
-        for label, handler in (("Cut", self.cut_selected), ("Split", self.split_selected), ("Text", self.add_text), ("Audio", self.import_media), ("Waveform", self.show_waveform), ("Undo", self.undo), ("Redo", self.redo)):
+        for label, handler in (("Cut", self.cut_selected), ("Split", self.split_selected), ("Text", self.add_text), ("Audio", self.import_media), ("Waveform", self.show_waveform), ("Meters", self.show_audio_levels), ("Undo", self.undo), ("Redo", self.redo)):
             action = QAction(label, self)
             action.triggered.connect(handler)
             toolbar.addAction(action)
@@ -444,6 +446,35 @@ class FindCutWindow(QMainWindow):
             dialog.exec()
         except MediaError as exc:
             QMessageBox.warning(self, "Waveform failed", str(exc))
+
+    def show_audio_levels(self) -> None:
+        item = self.media_list.currentItem()
+        asset = next((candidate for candidate in self.project.media if item and candidate.id == item.data(Qt.UserRole)), None)
+        if asset is None:
+            QMessageBox.information(self, "Audio meters", "Select audio or video media first.")
+            return
+        try:
+            measured = self.levels.analyze(asset.path)
+        except MediaError as exc:
+            QMessageBox.warning(self, "Audio meters failed", str(exc))
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Audio meters — {Path(asset.path).name}")
+        dialog.resize(620, 180)
+        layout = QVBoxLayout(dialog)
+        for label, value in (("Mean", measured.mean_db), ("Peak", measured.peak_db)):
+            row = QHBoxLayout()
+            row.addWidget(QLabel(f"{label} ({value:.1f} dB)"))
+            meter = QProgressBar()
+            meter.setRange(0, 60)
+            meter.setValue(max(0, min(60, int(round(value + 60)))))
+            meter.setFormat("%v / 60 dBFS")
+            row.addWidget(meter, 1)
+            layout.addLayout(row)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
 
     def add_text(self) -> None:
         text, ok = QInputDialog.getText(self, "Add text", "Text:")
