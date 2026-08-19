@@ -4,17 +4,18 @@ from pathlib import Path
 import logging
 
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtGui import QAction, QDesktopServices, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPushButton, QSlider, QSplitter, QStatusBar, QToolBar, QVBoxLayout,
-    QWidget, QInputDialog,
+    QWidget, QInputDialog, QDialog, QDialogButtonBox,
 )
 
 from findcut.domain.models import Project, TextOverlay, new_id
 from findcut.media.ffmpeg import FFmpegAdapter, MediaError
+from findcut.media.waveform import WaveformRenderer
 from findcut.services.export import ExportService
 from findcut.services.timeline import TimelineService
 from findcut.services.templates import available_templates, create_from_template
@@ -31,6 +32,7 @@ class FindCutWindow(QMainWindow):
         self.resize(1280, 760)
         self.project = Project()
         self.media = FFmpegAdapter()
+        self.waveforms = WaveformRenderer(self.media)
         self.exporter = ExportService(self.media)
         self.timeline_service = TimelineService(self.project)
         self.project_path: Path | None = None
@@ -49,7 +51,7 @@ class FindCutWindow(QMainWindow):
         toolbar = QToolBar("Editing", self)
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
-        for label, handler in (("Cut", self.cut_selected), ("Split", self.split_selected), ("Text", self.add_text), ("Audio", self.import_media), ("Undo", self.undo), ("Redo", self.redo)):
+        for label, handler in (("Cut", self.cut_selected), ("Split", self.split_selected), ("Text", self.add_text), ("Audio", self.import_media), ("Waveform", self.show_waveform), ("Undo", self.undo), ("Redo", self.redo)):
             action = QAction(label, self)
             action.triggered.connect(handler)
             toolbar.addAction(action)
@@ -410,6 +412,38 @@ class FindCutWindow(QMainWindow):
         asset = next((a for a in self.project.media if a.id == item.data(Qt.UserRole)), None)
         if asset:
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(asset.path).parent)))
+
+    def show_waveform(self) -> None:
+        item = self.media_list.currentItem()
+        asset = next((candidate for candidate in self.project.media if item and candidate.id == item.data(Qt.UserRole)), None)
+        if asset is None:
+            timeline_item = self.timeline.currentItem()
+            if timeline_item:
+                try:
+                    _, clip = self.timeline_service._find(timeline_item.data(Qt.UserRole))
+                    asset = next((candidate for candidate in self.project.media if candidate.id == clip.asset_id), None)
+                except ValueError:
+                    asset = None
+        if asset is None:
+            QMessageBox.information(self, "Waveform", "Select audio or video media first.")
+            return
+        try:
+            output = Path.home() / "FindCut" / "waveforms" / f"{asset.id}.png"
+            waveform_path = self.waveforms.render(asset.path, output)
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"Waveform — {Path(asset.path).name}")
+            dialog.resize(1000, 260)
+            layout = QVBoxLayout(dialog)
+            image = QLabel()
+            image.setAlignment(Qt.AlignCenter)
+            image.setPixmap(QPixmap(str(waveform_path)))
+            layout.addWidget(image)
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+            buttons.rejected.connect(dialog.reject)
+            layout.addWidget(buttons)
+            dialog.exec()
+        except MediaError as exc:
+            QMessageBox.warning(self, "Waveform failed", str(exc))
 
     def add_text(self) -> None:
         text, ok = QInputDialog.getText(self, "Add text", "Text:")

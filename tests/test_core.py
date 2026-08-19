@@ -179,3 +179,15 @@ def test_keyframe_expression_contains_piecewise_interpolation():
     expression = TimelineRenderer._keyframe_expression([(0.0, 1.0), (2.0, 0.0)], 1.0)
     assert "lt(t" in expression
     assert "0.000000" in expression
+
+
+def test_waveform_renderer_generates_png(tmp_path: Path):
+    from findcut.media.waveform import WaveformRenderer
+
+    source = tmp_path / "tone.wav"
+    output = tmp_path / "tone-waveform.png"
+    subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.4", str(source)], capture_output=True, check=True)
+    result = WaveformRenderer().render(source, output, width=320, height=80)
+    assert result == output
+    assert output.exists()
+    assert output.stat().st_size > 100
