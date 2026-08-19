@@ -74,3 +74,24 @@ def test_timeline_split_trim_move_delete():
     assert right.timeline_start == 5.0
     service.delete(left.id)
     assert all(item.id != left.id for item in track.clips)
+
+
+def test_timeline_renderer_composes_multiple_clips(tmp_path: Path):
+    from findcut.media.renderer import TimelineRenderer
+
+    first = tmp_path / "first.mp4"
+    second = tmp_path / "second.mp4"
+    output = tmp_path / "edited.mp4"
+    for target, color in ((first, "red"), (second, "blue")):
+        subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c={color}:s=160x120:d=0.5", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-shortest", "-pix_fmt", "yuv420p", str(target)], capture_output=True, check=True)
+    project = Project()
+    first_asset = project.add_asset(str(first), "video", duration=0.5, width=160, height=120, fps=25.0)
+    second_asset = project.add_asset(str(second), "video", duration=0.5, width=160, height=120, fps=25.0)
+    track = next(track for track in project.tracks if track.kind == "video")
+    project.add_clip(first_asset.id, track.id, 0.0, 0.0, 0.5)
+    project.add_clip(second_asset.id, track.id, 0.5, 0.0, 0.5)
+    TimelineRenderer().render(project, output)
+    probe = FFmpegAdapter().probe(output)
+    assert output.exists()
+    assert probe.kind == "video"
+    assert probe.duration >= 0.8

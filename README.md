@@ -21,7 +21,7 @@ pytest -q
 
 ## Current milestone
 
-The current milestone is the foundation and media workflow. The model already represents multiple tracks, clips, trims, text overlays, image overlays, transitions, and export settings. Timeline playback, non-destructive split commands, full compositing, and rendered export are intentionally isolated for the next implementation milestone rather than represented as fake UI behavior.
+The current milestone is a usable editing and composition workflow. FindCut supports multi-file video/audio/image import, folder import, media removal and location opening, non-destructive timeline clips, trim/split/delete/move operations, project recovery backups, multi-clip FFmpeg timeline composition, edited MP4 export, selected-clip export, and audio extraction. Advanced synchronized preview playback, keyframe animation, richer transitions, and a full caption compositor remain roadmap work.
 
 ## License
 

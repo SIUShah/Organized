@@ -2,7 +2,9 @@
 
 ## Start a project
 
-Launch FindCut, choose **File → New Project**, and select **+ Add Media**. FindCut probes each file through FFmpeg and displays its type and duration in the media bin. Double-click a media item to place it on the matching timeline track.
+Launch FindCut, choose **File → New Project**, and select **+ Add Media** or **Add Folder**. FindCut probes each video, audio, and image through FFmpeg and displays its type and duration in the media bin. Double-click a media item to place it on the matching timeline track. The original files remain untouched.
+
+The media panel also includes **Remove**, which removes an asset from the project without deleting the source file, and **Open Location**, which opens the source folder in Windows Explorer.
 
 ## Edit clips
 
@@ -16,6 +18,8 @@ Choose **Text**, enter the title, and save the project. Text overlays are stored
 
 Use **File → Save Project** or **Save Project As…**. Saves are atomic. When overwriting an existing project, FindCut preserves the prior file as `<project>.findcut.bak`.
 
-## Export
+## Export edited media
 
-Choose **File → Export…**, select an MP4 destination, and FindCut uses the project export settings and FFmpeg backend. The current milestone exports the first imported source through the validated backend; full multi-clip compositing is the next renderer milestone.
+Choose **File → Export Edited Video…** to render the clips currently placed on the timeline into one MP4. FindCut uses FFmpeg filters to trim each clip, normalize the canvas, concatenate video clips in timeline order, and combine audio clips on the audio track.
+
+Choose **File → Export Selected Clip…** to create an MP4 from the selected timeline clip. Choose **File → Extract Audio…** to save the selected clip’s audio, or the first project asset’s audio when no timeline clip is selected. **Open Output Folder** opens the project folder so you can retrieve exported files.

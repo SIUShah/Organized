@@ -210,7 +210,7 @@ class FindCutWindow(QMainWindow):
         if not path:
             return
         try:
-            self.exporter.run(self.exporter.make_job(self.project, path))
+            self.exporter.render_project(self.project, path)
             self._show_export_complete(path)
         except (OSError, ValueError, MediaError) as exc:
             logger.exception("Export failed")

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from findcut.domain.models import Clip, ExportSettings, Project
 from findcut.media.ffmpeg import FFmpegAdapter
+from findcut.media.renderer import TimelineRenderer
 
 
 @dataclass
@@ -19,6 +20,7 @@ class ExportJob:
 class ExportService:
     def __init__(self, media: FFmpegAdapter | None = None) -> None:
         self.media = media or FFmpegAdapter()
+        self.renderer = TimelineRenderer(self.media)
 
     def make_job(self, project: Project, output_path: str | Path, clip: Clip | None = None) -> ExportJob:
         if not project.media:
@@ -34,3 +36,6 @@ class ExportService:
 
     def extract_audio(self, input_path: str | Path, output_path: str | Path, start: float = 0.0, duration: float | None = None) -> None:
         self.media.extract_audio(input_path, output_path, start, duration)
+
+    def render_project(self, project: Project, output_path: str | Path) -> None:
+        self.renderer.render(project, output_path)
