@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from findcut.domain.models import Clip, Project, new_id
+from findcut.domain.models import Clip, Project, Transition, new_id
 
 
 class TimelineService:
@@ -78,6 +78,22 @@ class TimelineService:
                 candidates.extend([item.timeline_start, item.timeline_start + item.duration])
         nearest = min(candidates, key=lambda value: abs(value - timeline_start))
         return nearest if abs(nearest - timeline_start) <= self.snap_threshold else max(0.0, timeline_start)
+
+    def add_transition(self, left_clip_id: str, right_clip_id: str, kind: str = "fade", duration: float = 0.5) -> Transition:
+        left_track, left = self._find(left_clip_id)
+        right_track, right = self._find(right_clip_id)
+        if left_track.id != right_track.id or left_track.kind != "video":
+            raise ValueError("Transitions require two clips on the same video track")
+        if right.timeline_start < left.timeline_start:
+            left, right = right, left
+        if abs((left.timeline_start + left.duration) - right.timeline_start) > 0.05:
+            raise ValueError("Transition clips must be adjacent on the timeline")
+        if kind not in {"fade"}:
+            raise ValueError("Unsupported transition type")
+        transition = Transition(new_id(), kind, left_track.id, left.id, right.id, max(0.05, min(duration, left.duration, right.duration)))
+        self.project.transitions = [item for item in self.project.transitions if item.left_clip_id != left.id or item.right_clip_id != right.id]
+        self.project.transitions.append(transition)
+        return transition
 
     def add_track(self, kind: str, name: str | None = None):
         if kind not in {"video", "audio"}:

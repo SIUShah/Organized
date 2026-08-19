@@ -145,3 +145,16 @@ def test_timeline_snapping_and_track_creation():
     assert added.kind == "video"
     service.move(first.id, 0.5, track_id=added.id)
     assert first.track_id == added.id
+
+
+def test_fade_transition_requires_adjacent_video_clips():
+    from findcut.services.timeline import TimelineService
+
+    project = Project()
+    asset = project.add_asset("sample.mp4", "video", duration=10.0)
+    track = next(track for track in project.tracks if track.kind == "video")
+    left = project.add_clip(asset.id, track.id, 0.0, 0.0, 2.0)
+    right = project.add_clip(asset.id, track.id, 2.0, 2.0, 4.0)
+    transition = TimelineService(project).add_transition(left.id, right.id, duration=0.4)
+    assert transition.kind == "fade"
+    assert transition.duration == 0.4

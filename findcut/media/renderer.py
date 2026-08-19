@@ -63,6 +63,12 @@ class TimelineRenderer:
                 f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
             ])
             transform = clip.transform or {}
+            incoming = next((item for item in project.transitions if item.right_clip_id == clip.id and item.kind == "fade"), None)
+            outgoing = next((item for item in project.transitions if item.left_clip_id == clip.id and item.kind == "fade"), None)
+            if incoming:
+                chain.append(f"fade=t=in:st=0:d={incoming.duration:.6f}")
+            if outgoing:
+                chain.append(f"fade=t=out:st={max(0.0, clip_duration - outgoing.duration):.6f}:d={outgoing.duration:.6f}")
             if "brightness" in transform or "contrast" in transform or "saturation" in transform:
                 chain.append(
                     "eq="
