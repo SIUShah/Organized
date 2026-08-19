@@ -41,7 +41,7 @@ jobs:
       - name: Build libopenshot-audio
         run: |
           git clone --depth 1 https://github.com/OpenShot/libopenshot-audio.git ../libopenshot-audio
-          cmake -S ../libopenshot-audio -B ../libopenshot-audio/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/native-prefix"
+          cmake -S ../libopenshot-audio -B ../libopenshot-audio/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/native-prefix" -DCMAKE_CXX_FLAGS=-DJUCE_ASIO=0
           cmake --build ../libopenshot-audio/build --parallel 2
           cmake --install ../libopenshot-audio/build
 
