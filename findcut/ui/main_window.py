@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import logging
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QAction, QDesktopServices
 from PySide6.QtWidgets import (
     QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPushButton, QSlider, QSplitter, QStatusBar, QToolBar, QVBoxLayout,
@@ -54,11 +54,15 @@ class FindCutWindow(QMainWindow):
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("File")
-        for label, handler, shortcut in (("New Project", self.new_project, "Ctrl+N"), ("Open Project…", self.open_project, "Ctrl+O"), ("Save Project", self.save_project, "Ctrl+S"), ("Save Project As…", self.save_project_as, "Ctrl+Shift+S"), ("Export…", self.export_project, "Ctrl+E")):
+        for label, handler, shortcut in (("New Project", self.new_project, "Ctrl+N"), ("Open Project…", self.open_project, "Ctrl+O"), ("Save Project", self.save_project, "Ctrl+S"), ("Save Project As…", self.save_project_as, "Ctrl+Shift+S"), ("Export Edited Video…", self.export_project, "Ctrl+E"), ("Export Selected Clip…", self.export_selected_clip, "Ctrl+Shift+E"), ("Extract Audio…", self.extract_audio, "Ctrl+Alt+E")):
             action = QAction(label, self)
             action.setShortcut(shortcut)
             action.triggered.connect(handler)
             file_menu.addAction(action)
+        file_menu.addSeparator()
+        open_output = QAction("Open Output Folder", self)
+        open_output.triggered.connect(self.open_output_folder)
+        file_menu.addAction(open_output)
         file_menu.addSeparator()
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self.close)
@@ -70,9 +74,22 @@ class FindCutWindow(QMainWindow):
         title = QLabel("MEDIA")
         title.setObjectName("sectionTitle")
         layout.addWidget(title)
+        file_tools = QHBoxLayout()
         add = QPushButton("+ Add Media")
         add.clicked.connect(self.import_media)
-        layout.addWidget(add)
+        file_tools.addWidget(add)
+        add_folder = QPushButton("Add Folder")
+        add_folder.clicked.connect(self.import_folder)
+        file_tools.addWidget(add_folder)
+        layout.addLayout(file_tools)
+        tools = QHBoxLayout()
+        remove = QPushButton("Remove")
+        remove.clicked.connect(self.remove_selected_media)
+        tools.addWidget(remove)
+        reveal = QPushButton("Open Location")
+        reveal.clicked.connect(self.reveal_selected_media)
+        tools.addWidget(reveal)
+        layout.addLayout(tools)
         self.media_list = QListWidget()
         self.media_list.itemDoubleClicked.connect(self.add_selected_to_timeline)
         layout.addWidget(self.media_list)
@@ -118,7 +135,18 @@ class FindCutWindow(QMainWindow):
         return panel
 
     def import_media(self) -> None:
-        paths, _ = QFileDialog.getOpenFileNames(self, "Add Media", "", "Media (*.mp4 *.mov *.mkv *.avi *.webm *.mp3 *.wav *.m4a *.png *.jpg *.jpeg);;All files (*)")
+        paths, _ = QFileDialog.getOpenFileNames(self, "Add Media Files", "", "Media (*.mp4 *.mov *.mkv *.avi *.webm *.mp3 *.wav *.m4a *.png *.jpg *.jpeg);;All files (*)")
+        self._import_paths(paths)
+
+    def import_folder(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "Add Media Folder")
+        if not folder:
+            return
+        extensions = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".mp3", ".wav", ".m4a", ".png", ".jpg", ".jpeg"}
+        paths = [str(path) for path in Path(folder).iterdir() if path.is_file() and path.suffix.lower() in extensions]
+        self._import_paths(paths)
+
+    def _import_paths(self, paths: list[str]) -> None:
         for path in paths:
             try:
                 probe = self.media.probe(path)
@@ -178,16 +206,86 @@ class FindCutWindow(QMainWindow):
         if not self.project.media:
             QMessageBox.information(self, "Nothing to export", "Add media to the project first.")
             return
-        path, _ = QFileDialog.getSaveFileName(self, "Export MP4", "findcut-export.mp4", "MP4 Video (*.mp4)")
+        path, _ = QFileDialog.getSaveFileName(self, "Export Edited Video", "findcut-export.mp4", "MP4 Video (*.mp4)")
         if not path:
             return
         try:
             self.exporter.run(self.exporter.make_job(self.project, path))
-            self.statusBar().showMessage("Export complete")
-            QMessageBox.information(self, "Export complete", f"Saved to {path}")
+            self._show_export_complete(path)
         except (OSError, ValueError, MediaError) as exc:
             logger.exception("Export failed")
             QMessageBox.warning(self, "Export failed", str(exc))
+
+    def export_selected_clip(self) -> None:
+        item = self.timeline.currentItem()
+        if not item:
+            QMessageBox.information(self, "Select a clip", "Select a timeline clip first.")
+            return
+        try:
+            _, clip = self.timeline_service._find(item.data(Qt.UserRole))
+            path, _ = QFileDialog.getSaveFileName(self, "Export Selected Clip", "findcut-clip.mp4", "MP4 Video (*.mp4)")
+            if path:
+                self.exporter.run(self.exporter.make_job(self.project, path, clip))
+                self._show_export_complete(path)
+        except (OSError, ValueError, MediaError) as exc:
+            logger.exception("Clip export failed")
+            QMessageBox.warning(self, "Clip export failed", str(exc))
+
+    def extract_audio(self) -> None:
+        item = self.timeline.currentItem()
+        asset = None
+        start = 0.0
+        duration = None
+        if item:
+            try:
+                _, clip = self.timeline_service._find(item.data(Qt.UserRole))
+                asset = next((a for a in self.project.media if a.id == clip.asset_id), None)
+                start, duration = clip.source_in, clip.duration
+            except ValueError:
+                pass
+        if asset is None and self.project.media:
+            asset = self.project.media[0]
+        if asset is None:
+            QMessageBox.information(self, "Nothing to export", "Import media first.")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Extract Audio", "findcut-audio.m4a", "M4A Audio (*.m4a);;WAV Audio (*.wav)")
+        if not path:
+            return
+        try:
+            self.exporter.extract_audio(asset.path, path, start, duration)
+            self._show_export_complete(path)
+        except (OSError, MediaError) as exc:
+            logger.exception("Audio extraction failed")
+            QMessageBox.warning(self, "Audio export failed", str(exc))
+
+    def _show_export_complete(self, path: str) -> None:
+        self.statusBar().showMessage(f"File saved: {path}")
+        QMessageBox.information(self, "File saved", f"Saved to:\n{path}")
+
+    def open_output_folder(self) -> None:
+        folder = str(self.project_path.parent if self.project_path else Path.home())
+        QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
+
+    def remove_selected_media(self) -> None:
+        item = self.media_list.currentItem()
+        if not item:
+            self.statusBar().showMessage("Select a media file first.")
+            return
+        asset_id = item.data(Qt.UserRole)
+        self.project.media = [asset for asset in self.project.media if asset.id != asset_id]
+        for track in self.project.tracks:
+            track.clips = [clip for clip in track.clips if clip.asset_id != asset_id]
+        self._refresh_lists()
+        self.statusBar().showMessage("Media removed from the project; original file was not changed.")
+
+    def reveal_selected_media(self) -> None:
+        item = self.media_list.currentItem()
+        if not item:
+            self.statusBar().showMessage("Select a media file first.")
+            return
+        asset = next((a for a in self.project.media if a.id == item.data(Qt.UserRole)), None)
+        if asset:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(asset.path).parent)))
 
     def add_text(self) -> None:
         text, ok = QInputDialog.getText(self, "Add text", "Text:")

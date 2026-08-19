@@ -66,8 +66,13 @@ class FFmpegAdapter:
             metadata={"format": payload.get("format", {}), "streams": streams},
         )
 
-    def export(self, input_path: str | Path, output_path: str | Path, settings, progress_callback=None) -> None:
-        command = [self.ffmpeg_path, "-y", "-i", str(input_path), "-c:v", settings.video_codec, "-c:a", settings.audio_codec, "-b:v", settings.video_bitrate, "-b:a", settings.audio_bitrate, "-r", str(settings.fps), "-s", f"{settings.width}x{settings.height}", str(output_path)]
+    def export(self, input_path: str | Path, output_path: str | Path, settings, source_in: float = 0.0, source_duration: float | None = None, progress_callback=None) -> None:
+        command = [self.ffmpeg_path, "-y"]
+        if source_in > 0:
+            command.extend(["-ss", f"{source_in:.6f}"])
+        if source_duration is not None and source_duration > 0:
+            command.extend(["-t", f"{source_duration:.6f}"])
+        command.extend(["-i", str(input_path), "-c:v", settings.video_codec, "-c:a", settings.audio_codec, "-b:v", settings.video_bitrate, "-b:a", settings.audio_bitrate, "-r", str(settings.fps), "-s", f"{settings.width}x{settings.height}", str(output_path)])
         try:
             completed = subprocess.run(command, capture_output=True, text=True, check=False)
         except OSError as exc:
@@ -75,6 +80,22 @@ class FFmpegAdapter:
         if completed.returncode != 0:
             logger.error("Export failed: %s", completed.stderr.strip())
             raise MediaError("Export failed. See details.")
+
+    def extract_audio(self, input_path: str | Path, output_path: str | Path, start: float = 0.0, duration: float | None = None) -> None:
+        command = [self.ffmpeg_path, "-y"]
+        if start > 0:
+            command.extend(["-ss", f"{start:.6f}"])
+        if duration is not None and duration > 0:
+            command.extend(["-t", f"{duration:.6f}"])
+        command.extend(["-i", str(input_path), "-vn", "-c:a", "aac", "-b:a", "192k", str(output_path)])
+        try:
+            completed = subprocess.run(command, capture_output=True, text=True, check=False)
+        except OSError as exc:
+            logger.exception("Could not launch ffmpeg for audio extraction")
+            raise MediaError("Media tools are not available.") from exc
+        if completed.returncode != 0:
+            logger.error("Audio extraction failed: %s", completed.stderr.strip())
+            raise MediaError("Audio export failed. See details.")
 
     @staticmethod
     def _fraction(value: str) -> float:
