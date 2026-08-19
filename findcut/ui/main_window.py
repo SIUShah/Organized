@@ -22,7 +22,7 @@ from findcut.services.export import ExportService
 from findcut.services.timeline import TimelineService
 from findcut.services.templates import available_templates, create_from_template
 from findcut.ai.model_manager import ModelManager
-from findcut.ai.transcription import transcribe, write_srt
+from findcut.ai.transcription import transcribe, write_ass, write_srt
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +123,9 @@ class FindCutWindow(QMainWindow):
         captions = QAction("Generate Captions (Whisper)…", self)
         captions.triggered.connect(self.generate_captions)
         ai_menu.addAction(captions)
+        styled_captions = QAction("Generate Styled Word Captions (ASS)…", self)
+        styled_captions.triggered.connect(self.generate_styled_captions)
+        ai_menu.addAction(styled_captions)
         file_menu.addSeparator()
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self.close)
@@ -390,6 +393,31 @@ class FindCutWindow(QMainWindow):
         try:
             segments = transcribe(asset.path, name, self.model_manager.root)
             write_srt(segments, output)
+            self._show_export_complete(output)
+        except RuntimeError as exc:
+            QMessageBox.warning(self, "Caption generation failed", str(exc))
+
+    def generate_styled_captions(self) -> None:
+        item = self.media_list.currentItem()
+        asset = next((a for a in self.project.media if item and a.id == item.data(Qt.UserRole)), None)
+        if asset is None and self.project.media:
+            asset = self.project.media[0]
+        if asset is None:
+            QMessageBox.information(self, "No media", "Import an audio or video file first.")
+            return
+        names = [model.name for model in self.model_manager.available() if self.model_manager.is_installed(model.name)]
+        if not names:
+            QMessageBox.information(self, "Install a model", "Choose File → AI Tools → Install Whisper Model first.")
+            return
+        name, ok = QInputDialog.getItem(self, "Generate Styled Captions", "Installed model:", names, 0, False)
+        if not ok:
+            return
+        output, _ = QFileDialog.getSaveFileName(self, "Save Styled Captions", Path(asset.path).with_suffix(".ass").name, "ASS captions (*.ass)")
+        if not output:
+            return
+        try:
+            segments = transcribe(asset.path, name, self.model_manager.root)
+            write_ass(segments, output, title=Path(asset.path).stem)
             self._show_export_complete(output)
         except RuntimeError as exc:
             QMessageBox.warning(self, "Caption generation failed", str(exc))
