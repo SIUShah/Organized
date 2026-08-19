@@ -13,6 +13,8 @@ if (-not (Test-Path "runtime\ffprobe.exe")) {
 Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
 pyinstaller --clean findcut_windows.spec
 
+New-Item -ItemType Directory -Force dist\FindCut | Out-Null
+Copy-Item dist\FindCut.exe dist\FindCut\FindCut.exe -Force
 if (Test-Path "runtime") {
     Copy-Item runtime dist\FindCut\runtime -Recurse -Force
 }
