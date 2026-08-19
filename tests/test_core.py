@@ -202,3 +202,13 @@ def test_audio_level_analyzer_reports_real_levels(tmp_path: Path):
     assert levels.mean_db < 0
     assert levels.peak_db < 0
     assert levels.peak_db >= levels.mean_db
+
+
+def test_media_engine_registry_has_safe_fallback():
+    from findcut.media.engines import MediaEngineRegistry
+
+    registry = MediaEngineRegistry()
+    statuses = registry.statuses()
+    assert statuses[0].name == "FFmpeg CLI"
+    assert statuses[0].available is True
+    assert registry.preferred().name in {"FFmpeg CLI", "libopenshot", "GStreamer Editing Services"}
