@@ -51,12 +51,33 @@ class TimelineRenderer:
                 inputs.extend(["-i", asset.path])
             end = clip.source_out if clip.source_out is not None else asset.duration
             clip_duration = max(0.05, clip.duration)
-            filters.append(
-                f"[{input_index}:v]trim=start={clip.source_in:.6f}:end={end:.6f},"
-                f"setpts=PTS-STARTPTS,scale={width}:{height}:force_original_aspect_ratio=decrease,"
-                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
-                f"trim=duration={clip_duration:.6f},setpts=PTS-STARTPTS[vclip{input_index}]"
-            )
+            chain = [
+                f"[{input_index}:v]trim=start={clip.source_in:.6f}:end={end:.6f}",
+                "setpts=PTS-STARTPTS",
+            ]
+            speed = max(0.05, float(clip.speed))
+            if abs(speed - 1.0) > 0.001:
+                chain.append(f"setpts=PTS/{speed:.6f}")
+            chain.extend([
+                f"scale={width}:{height}:force_original_aspect_ratio=decrease",
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
+            ])
+            transform = clip.transform or {}
+            if "brightness" in transform or "contrast" in transform or "saturation" in transform:
+                chain.append(
+                    "eq="
+                    f"brightness={float(transform.get('brightness', 0.0)):.4f}:"
+                    f"contrast={float(transform.get('contrast', 1.0)):.4f}:"
+                    f"saturation={float(transform.get('saturation', 1.0)):.4f}"
+                )
+            if "hue" in transform:
+                chain.append(f"hue=h={float(transform['hue']):.4f}")
+            if "rotation" in transform:
+                chain.append(f"rotate={float(transform['rotation']):.6f}:fillcolor=black@0")
+            if "opacity" in transform or clip.opacity < 0.999:
+                chain.append(f"format=rgba,colorchannelmixer=aa={float(transform.get('opacity', clip.opacity)):.4f}")
+            chain.extend([f"trim=duration={clip_duration:.6f}", "setpts=PTS-STARTPTS"])
+            filters.append(",".join(chain) + f"[vclip{input_index}]")
             start = max(0.0, clip.timeline_start)
             stop = start + clip_duration
             next_label = f"vcomp{input_index}"
@@ -66,6 +87,18 @@ class TimelineRenderer:
             )
             video_label = next_label
             input_index += 1
+
+        for overlay in project.text_overlays:
+            text = str(overlay.text).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\\\'")
+            x = f"{float(overlay.x):.4f}*w"
+            y = f"{float(overlay.y):.4f}*h"
+            next_label = f"vtext{len(filters)}"
+            filters.append(
+                f"[{video_label}]drawtext=text='{text}':x={x}:y={y}:"
+                f"fontsize={int(overlay.font_size)}:fontcolor={overlay.color}:"
+                f"enable='between(t,{float(overlay.start):.6f},{float(overlay.start + overlay.duration):.6f})'[{next_label}]"
+            )
+            video_label = next_label
 
         audio_labels: list[str] = []
         for clip in sorted(audio_clips, key=lambda item: item.timeline_start):
