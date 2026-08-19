@@ -1,38 +1,64 @@
 # FindCut
 
-FindCut is a free, open-source, offline-first Windows video and audio editor designed to hide complexity without hiding capability. The first milestone provides a runnable PySide6 desktop shell, media import and metadata inspection through FFmpeg, a versioned non-destructive project model, basic media-bin-to-timeline placement, text-overlay state, and project save/open.
+FindCut is an **offline-first, non-destructive multitrack video and audio editor for Windows**, built around PySide6 and FFmpeg with optional AI extensions. Its design goal is professional capability without hiding the execution path: project state is explicit, rendering is testable, and optional native or AI engines are detected rather than silently assumed.
+
+## Verified capabilities
+
+| Area | Implemented behavior | Evidence |
+|---|---|---|
+| Media workflow | Import individual files or folders, probe metadata, remove assets, reveal source locations, and preview media with Qt Multimedia | `findcut/ui/main_window.py`, `findcut/media/ffmpeg.py` |
+| Non-destructive editing | Trim, split, move, delete, snapping, multiple video/audio tracks, project save/open, and recovery backup behavior | `findcut/services/timeline.py`, `findcut/domain/models.py` |
+| Rendering | FFmpeg filter-graph compositor with positioned video layers, mixed audio, text overlays, transforms, color controls, speed, opacity, and MP4 export | `findcut/media/renderer.py` |
+| Transitions | Validated adjacent-clip fade transitions rendered with timed FFmpeg fade filters | `findcut/services/timeline.py`, `findcut/media/renderer.py` |
+| Animation | Persistent clip keyframes with timeline editing controls; opacity and volume render as piecewise-linear frame-evaluated expressions | `findcut/domain/models.py`, `findcut/media/renderer.py` |
+| Audio tooling | Waveform PNG generation and mean/peak loudness meters using real FFmpeg analysis | `findcut/media/waveform.py`, `findcut/media/levels.py` |
+| AI workflow | Optional Whisper model manager and SRT caption generation; model downloads and licenses remain explicit | `findcut/ai/` |
+| Templates | YouTube, vertical Shorts/Reels, podcast-video, and slideshow project defaults | `findcut/services/templates.py` |
+| Delivery | GitHub Actions Windows build produces native executable artifacts through PyInstaller | `.github/workflows/windows-build.yml`, `BUILD.md` |
+
+The current repository contains a working, test-backed editor foundation rather than a visual mockup. It is not yet equivalent to DaVinci Resolve: advanced GPU playback, multicam, node compositing, extensive plugin hosting, professional color scopes, and full native-engine integration remain separate engineering milestones.
 
 ## Run from source
 
-Install Python 3.11 or newer, install the pinned dependencies, ensure `ffmpeg` and `ffprobe` are on `PATH`, and run:
+Install Python 3.11 or newer, install the pinned dependencies, ensure `ffmpeg` and `ffprobe` are available on `PATH`, and run:
 
-```bash
+```powershell
 python -m pip install -r requirements.txt
 python -m findcut.app.main
 ```
 
-On Windows, the same commands work in PowerShell. A future packaged build will bundle the Python runtime and media binaries so end users do not need Python installed.
+The same package can be developed on Linux or macOS when PySide6 and FFmpeg are available. The target distribution is Windows.
 
-## Tests
+## Build the Windows executable
+
+The supported delivery path is GitHub Actions on a Windows runner. The workflow packages the application with PyInstaller and uploads the resulting Windows artifact. Local Windows builds are also documented in [`BUILD.md`](BUILD.md).
+
+```powershell
+.\tools\build_windows.ps1
+```
+
+Use the latest successful workflow artifact rather than assuming the sandbox itself is a Windows environment. The repository is synchronized at [SIUShah/Organized](https://github.com/SIUShah/Organized).
+
+## Test and evidence
+
+Run the complete test suite with:
 
 ```bash
 pytest -q
 ```
 
-## Current milestone
+The suite covers project persistence, timeline editing, real FFmpeg media probing, multitrack composition, audio mixing, transitions, keyframe management, waveform generation, loudness analysis, Whisper SRT formatting, and optional engine detection. The latest verified local run passed **17 tests**.
 
-The current milestone is a usable editing and composition workflow. FindCut supports multi-file video/audio/image import, folder import, media removal and location opening, non-destructive timeline clips, trim/split/delete/move operations, project recovery backups, multi-clip FFmpeg timeline composition, edited MP4 export, selected-clip export, and audio extraction. Advanced synchronized preview playback, keyframe animation, richer transitions, and a full caption compositor remain roadmap work.
+## Architecture
 
-## License
+The application separates the project domain model, editing services, media adapters, rendering, AI services, and PySide6 presentation layer. The FFmpeg renderer is the deterministic fallback and export path. The optional engine registry detects libopenshot Python bindings and GStreamer/PyGObject without making either a hard dependency.
 
-FindCut application code is released under the GNU GPLv3 or later; see `LICENSE`. Third-party components retain their own licenses. See `THIRD_PARTY_LICENSES/` and `docs/ARCHITECTURE.md`.
-
-## Real playback and templates
-
-The desktop preview uses Qt Multimedia with the bundled FFmpeg-enabled Qt runtime on supported platforms. The File menu includes project templates for YouTube 1080p, vertical Shorts/Reels, podcast video, and photo slideshow workflows. Templates configure the project canvas and export defaults; users still add their own source media.
-
-FindCut’s current renderer is a tested FFmpeg filter pipeline with a Qt playback surface. The architecture keeps the media boundary isolated so a future Windows bundle can replace or augment it with MLT or libopenshot when the native libraries and redistribution notices are validated. The project does not pretend that a Python-only shell is equivalent to a mature editor until those playback, effect, and timeline paths are tested end to end.
+Native-engine research and the adapter decision are documented in [`docs/native-engine-research.md`](docs/native-engine-research.md). The current recommendation is to prototype libopenshot first because its documented surface includes multi-layer compositing, animation curves, time mapping, audio mixing, Qt playback, Python bindings, and FFmpeg codec coverage. GStreamer Editing Services is the alternative interactive timeline engine, while MLT remains a strong candidate for advanced filters and transitions.
 
 ## Optional AI extensions
 
-Speech-to-text captions, scene detection, background removal, and enhancement models are intentionally optional extensions rather than hidden dependencies. They require model downloads, additional CPU/GPU resources, and separate model licenses. The planned AI adapter boundary keeps those features replaceable and prevents a large pretrained model from silently being redistributed without its license and size requirements being documented.
+Whisper transcription is intentionally optional. Users install a model through the model manager and generate SRT captions from the AI Tools menu. Scene analysis, background removal, enhancement, and other model-backed workflows should be added behind the same explicit adapter boundary so model size, compute requirements, and licensing remain visible.
+
+## Licensing
+
+FindCut application code is released under the GNU GPLv3 or later; see [`LICENSE`](LICENSE). Third-party components retain their own licenses. See [`THIRD_PARTY_LICENSES/`](THIRD_PARTY_LICENSES/) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
