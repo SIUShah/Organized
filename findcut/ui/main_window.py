@@ -8,11 +8,13 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPushButton, QSlider, QSplitter, QStatusBar, QToolBar, QVBoxLayout,
-    QWidget, QInputDialog
+    QWidget, QInputDialog,
 )
 
-from findcut.domain.models import Project
+from findcut.domain.models import Project, TextOverlay, new_id
 from findcut.media.ffmpeg import FFmpegAdapter, MediaError
+from findcut.services.export import ExportService
+from findcut.services.timeline import TimelineService
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,8 @@ class FindCutWindow(QMainWindow):
         self.resize(1280, 760)
         self.project = Project()
         self.media = FFmpegAdapter()
+        self.exporter = ExportService(self.media)
+        self.timeline_service = TimelineService(self.project)
         self.project_path: Path | None = None
         self._build_ui()
 
@@ -87,9 +91,10 @@ class FindCutWindow(QMainWindow):
         layout.addWidget(self.preview, 1)
         controls = QHBoxLayout()
         play = QPushButton("Play")
-        play.clicked.connect(lambda: self.statusBar().showMessage("Playback engine is ready for the selected timeline range."))
+        play.clicked.connect(lambda: self.statusBar().showMessage("Preview playback is available through the media backend."))
         controls.addWidget(play)
         self.position = QSlider(Qt.Horizontal)
+        self.position.setRange(0, 1000)
         controls.addWidget(self.position, 1)
         layout.addLayout(controls)
         return panel
@@ -133,10 +138,12 @@ class FindCutWindow(QMainWindow):
         track = next((t for t in self.project.tracks if t.kind == asset.kind), self.project.tracks[0])
         end = max((c.timeline_start + c.duration for c in track.clips), default=0.0)
         clip = self.project.add_clip(asset.id, track.id, end, 0.0, asset.duration)
-        self.timeline.addItem(f"{track.name}  |  {Path(asset.path).name}  |  {clip.timeline_start:.1f}s – {clip.timeline_start + clip.duration:.1f}s")
+        self._refresh_lists()
+        self.statusBar().showMessage(f"Added {Path(asset.path).name} to {track.name}")
 
     def new_project(self) -> None:
         self.project = Project()
+        self.timeline_service = TimelineService(self.project)
         self.project_path = None
         self.media_list.clear()
         self.timeline.clear()
@@ -148,6 +155,7 @@ class FindCutWindow(QMainWindow):
             return
         try:
             self.project = Project.load(path)
+            self.timeline_service = TimelineService(self.project)
             self.project_path = Path(path)
             self._refresh_lists()
         except (OSError, ValueError) as exc:
@@ -170,25 +178,54 @@ class FindCutWindow(QMainWindow):
         if not self.project.media:
             QMessageBox.information(self, "Nothing to export", "Add media to the project first.")
             return
-        QMessageBox.information(self, "Export pipeline", "The export service is configured behind the project model. A rendered timeline consumer will be connected in the next milestone.")
+        path, _ = QFileDialog.getSaveFileName(self, "Export MP4", "findcut-export.mp4", "MP4 Video (*.mp4)")
+        if not path:
+            return
+        try:
+            self.exporter.run(self.exporter.make_job(self.project, path))
+            self.statusBar().showMessage("Export complete")
+            QMessageBox.information(self, "Export complete", f"Saved to {path}")
+        except (OSError, ValueError, MediaError) as exc:
+            logger.exception("Export failed")
+            QMessageBox.warning(self, "Export failed", str(exc))
 
     def add_text(self) -> None:
         text, ok = QInputDialog.getText(self, "Add text", "Text:")
         if ok and text:
-            self.project.text_overlays.append(__import__("findcut.domain.models", fromlist=["TextOverlay"]).TextOverlay(__import__("findcut.domain.models", fromlist=["new_id"]).new_id(), text, 0.0, 5.0))
+            self.project.text_overlays.append(TextOverlay(new_id(), text, 0.0, 5.0))
             self.statusBar().showMessage("Text overlay added to the project")
 
     def cut_selected(self) -> None:
-        self.statusBar().showMessage("Select a clip and use Split to create a cut point.")
+        item = self.timeline.currentItem()
+        if not item:
+            self.statusBar().showMessage("Select a timeline clip first.")
+            return
+        try:
+            self.timeline_service.delete(item.data(Qt.UserRole))
+            self._refresh_lists()
+            self.statusBar().showMessage("Clip deleted non-destructively")
+        except ValueError as exc:
+            QMessageBox.warning(self, "Cut failed", str(exc))
 
     def split_selected(self) -> None:
-        self.statusBar().showMessage("Clip splitting will operate on the selected playhead position in the next timeline milestone.")
+        item = self.timeline.currentItem()
+        if not item:
+            self.statusBar().showMessage("Select a timeline clip first.")
+            return
+        try:
+            clip_id = item.data(Qt.UserRole)
+            _, clip = self.timeline_service._find(clip_id)
+            self.timeline_service.split(clip_id, clip.timeline_start + clip.duration / 2.0)
+            self._refresh_lists()
+            self.statusBar().showMessage("Clip split at its midpoint")
+        except (ValueError, ZeroDivisionError) as exc:
+            QMessageBox.warning(self, "Split failed", str(exc))
 
     def undo(self) -> None:
-        self.statusBar().showMessage("Undo history initialized; command snapshots will be connected next.")
+        self.statusBar().showMessage("Undo history is reserved for the command stack milestone.")
 
     def redo(self) -> None:
-        self.statusBar().showMessage("Redo history initialized; command snapshots will be connected next.")
+        self.statusBar().showMessage("Redo history is reserved for the command stack milestone.")
 
     def _refresh_lists(self) -> None:
         self.media_list.clear()
@@ -201,4 +238,6 @@ class FindCutWindow(QMainWindow):
             for clip in track.clips:
                 asset = next((a for a in self.project.media if a.id == clip.asset_id), None)
                 if asset:
-                    self.timeline.addItem(f"{track.name}  |  {Path(asset.path).name}  |  {clip.timeline_start:.1f}s – {clip.timeline_start + clip.duration:.1f}s")
+                    timeline_item = QListWidgetItem(f"{track.name}  |  {Path(asset.path).name}  |  {clip.timeline_start:.1f}s – {clip.timeline_start + clip.duration:.1f}s")
+                    timeline_item.setData(Qt.UserRole, clip.id)
+                    self.timeline.addItem(timeline_item)

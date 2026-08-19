@@ -161,7 +161,15 @@ class Project:
         )
 
     def save(self, path: str | Path) -> None:
-        Path(path).write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(self.to_dict(), indent=2)
+        temporary = target.with_suffix(target.suffix + ".tmp")
+        temporary.write_text(payload, encoding="utf-8")
+        if target.exists():
+            backup = target.with_suffix(target.suffix + ".bak")
+            backup.write_bytes(target.read_bytes())
+        temporary.replace(target)
 
     @classmethod
     def load(cls, path: str | Path) -> Project:
