@@ -13,11 +13,15 @@ if (-not (Test-Path "runtime\ffprobe.exe")) {
 Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
 pyinstaller --clean findcut_windows.spec
 
-New-Item -ItemType Directory -Force dist\FindCut | Out-Null
-Copy-Item dist\FindCut.exe dist\FindCut\FindCut.exe -Force
+if (-not (Test-Path "dist\FindCut\FindCut.exe")) { throw 'PyInstaller did not produce dist\\FindCut\\FindCut.exe.' }
 if (Test-Path "runtime") {
     Copy-Item runtime dist\FindCut\runtime -Recurse -Force
 }
 Copy-Item THIRD_PARTY_LICENSES dist\FindCut\THIRD_PARTY_LICENSES -Recurse -Force
 Copy-Item README.md, USER_GUIDE.md, LICENSE dist\FindCut -Force
-Write-Host "FindCut package staged at dist\FindCut"
+@'
+@echo off
+cd /d "%~dp0"
+start "FindCut" "FindCut.exe"
+'@ | Set-Content dist\FindCut\Start-FindCut.cmd -Encoding ASCII
+Write-Host "FindCut onedir package staged at dist\\FindCut"

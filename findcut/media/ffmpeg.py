@@ -5,6 +5,7 @@ import json
 import logging
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -28,8 +29,8 @@ class ProbeResult:
 
 class FFmpegAdapter:
     def __init__(self, ffprobe_path: str | None = None, ffmpeg_path: str | None = None) -> None:
-        self.ffprobe_path = ffprobe_path or shutil.which("ffprobe") or "ffprobe"
-        self.ffmpeg_path = ffmpeg_path or shutil.which("ffmpeg") or "ffmpeg"
+        self.ffprobe_path = ffprobe_path or self._bundled_binary("ffprobe") or shutil.which("ffprobe") or "ffprobe"
+        self.ffmpeg_path = ffmpeg_path or self._bundled_binary("ffmpeg") or shutil.which("ffmpeg") or "ffmpeg"
 
     def probe(self, path: str | Path) -> ProbeResult:
         source = Path(path)
@@ -96,6 +97,18 @@ class FFmpegAdapter:
         if completed.returncode != 0:
             logger.error("Audio extraction failed: %s", completed.stderr.strip())
             raise MediaError("Audio export failed. See details.")
+
+    @staticmethod
+    def _bundled_binary(name: str) -> str | None:
+        candidates = []
+        bundle_root = getattr(sys, "_MEIPASS", None)
+        if bundle_root:
+            candidates.append(Path(bundle_root) / "runtime" / f"{name}.exe")
+        candidates.append(Path(sys.executable).resolve().parent / "runtime" / f"{name}.exe")
+        for candidate in candidates:
+            if candidate.exists():
+                return str(candidate)
+        return None
 
     @staticmethod
     def _fraction(value: str) -> float:

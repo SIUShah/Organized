@@ -10,7 +10,9 @@ from findcut.ui.main_window import FindCutWindow
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s", filename="findcut.log")
+    log_dir = Path.home() / ".findcut"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s", filename=str(log_dir / "findcut.log"))
     app = QApplication(sys.argv)
     app.setApplicationName("FindCut")
     app.setOrganizationName("FindCut Open Source")
