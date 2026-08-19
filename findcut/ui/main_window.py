@@ -18,6 +18,8 @@ from findcut.media.ffmpeg import FFmpegAdapter, MediaError
 from findcut.services.export import ExportService
 from findcut.services.timeline import TimelineService
 from findcut.services.templates import available_templates, create_from_template
+from findcut.ai.model_manager import ModelManager
+from findcut.ai.transcription import transcribe, write_srt
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ class FindCutWindow(QMainWindow):
         self.exporter = ExportService(self.media)
         self.timeline_service = TimelineService(self.project)
         self.project_path: Path | None = None
+        self.model_manager = ModelManager()
         self.player = QMediaPlayer(self)
         self.audio_output = QAudioOutput(self)
         self.player.setAudioOutput(self.audio_output)
@@ -79,6 +82,14 @@ class FindCutWindow(QMainWindow):
         open_output = QAction("Open Output Folder", self)
         open_output.triggered.connect(self.open_output_folder)
         file_menu.addAction(open_output)
+        file_menu.addSeparator()
+        ai_menu = file_menu.addMenu("AI Tools")
+        install_model = QAction("Install Whisper Model…", self)
+        install_model.triggered.connect(self.install_whisper_model)
+        ai_menu.addAction(install_model)
+        captions = QAction("Generate Captions (Whisper)…", self)
+        captions.triggered.connect(self.generate_captions)
+        ai_menu.addAction(captions)
         file_menu.addSeparator()
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self.close)
@@ -312,6 +323,43 @@ class FindCutWindow(QMainWindow):
         except (OSError, MediaError) as exc:
             logger.exception("Audio extraction failed")
             QMessageBox.warning(self, "Audio export failed", str(exc))
+
+    def install_whisper_model(self) -> None:
+        names = [model.name for model in self.model_manager.available()]
+        name, ok = QInputDialog.getItem(self, "Install Whisper Model", "Model:", names, 1, False)
+        if not ok:
+            return
+        try:
+            self.statusBar().showMessage(f"Downloading Whisper {name} model…")
+            self.model_manager.install(name)
+            self.statusBar().showMessage(f"Whisper {name} model is ready")
+        except RuntimeError as exc:
+            QMessageBox.warning(self, "AI model unavailable", str(exc))
+
+    def generate_captions(self) -> None:
+        item = self.media_list.currentItem()
+        asset = next((a for a in self.project.media if item and a.id == item.data(Qt.UserRole)), None)
+        if asset is None and self.project.media:
+            asset = self.project.media[0]
+        if asset is None:
+            QMessageBox.information(self, "No media", "Import an audio or video file first.")
+            return
+        names = [model.name for model in self.model_manager.available() if self.model_manager.is_installed(model.name)]
+        if not names:
+            QMessageBox.information(self, "Install a model", "Choose File → AI Tools → Install Whisper Model first.")
+            return
+        name, ok = QInputDialog.getItem(self, "Generate Captions", "Installed model:", names, 0, False)
+        if not ok:
+            return
+        output, _ = QFileDialog.getSaveFileName(self, "Save Captions", Path(asset.path).with_suffix(".srt").name, "SubRip captions (*.srt)")
+        if not output:
+            return
+        try:
+            segments = transcribe(asset.path, name, self.model_manager.root)
+            write_srt(segments, output)
+            self._show_export_complete(output)
+        except RuntimeError as exc:
+            QMessageBox.warning(self, "Caption generation failed", str(exc))
 
     def _show_export_complete(self, path: str) -> None:
         self.statusBar().showMessage(f"File saved: {path}")

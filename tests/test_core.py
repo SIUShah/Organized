@@ -95,3 +95,14 @@ def test_timeline_renderer_composes_multiple_clips(tmp_path: Path):
     assert output.exists()
     assert probe.kind == "video"
     assert probe.duration >= 0.8
+
+
+def test_whisper_srt_formatting_and_model_manager(tmp_path: Path):
+    from findcut.ai.model_manager import ModelManager
+    from findcut.ai.transcription import write_srt
+
+    manager = ModelManager(tmp_path / "models")
+    assert {item.name for item in manager.available()} >= {"tiny", "base", "turbo"}
+    assert not manager.is_installed("tiny")
+    target = write_srt([{"start": 1.25, "end": 3.5, "text": "Hello FindCut"}], tmp_path / "captions.srt")
+    assert target.read_text(encoding="utf-8") == "1\n00:00:01,250 --> 00:00:03,500\nHello FindCut\n"
