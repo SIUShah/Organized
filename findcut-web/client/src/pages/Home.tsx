@@ -60,6 +60,10 @@ export default function Home() {
         const progress = Math.max(-1, Math.min(1, (viewport * 0.52 - (bounds.top + bounds.height * 0.18)) / Math.max(viewport * 0.9, bounds.height)));
         scene.style.setProperty("--scroll-progress", progress.toFixed(3));
         scene.style.setProperty("--scene-index", String(index));
+        const direction = index % 2 === 0 ? 1 : -1;
+        scene.style.setProperty("--scene-arc", `${(progress * direction * (18 + (index % 3) * 8)).toFixed(2)}px`);
+        scene.style.setProperty("--scene-spin", `${(progress * direction * (1.6 + (index % 4) * 0.45)).toFixed(2)}deg`);
+        scene.style.setProperty("--scene-scale", (1 - Math.abs(progress) * 0.018).toFixed(3));
       });
     };
     const onScroll = () => { if (!frame) frame = window.requestAnimationFrame(update); };

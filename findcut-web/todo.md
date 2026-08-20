@@ -28,3 +28,4 @@
 - [x] Refresh landing theme with hopeful palette and inclusive smiling creator portraits across varied skin tones and genders
 - [x] Add distinct high-resolution human scenes for conversation groups, collaborating couples, and academic communities across page sections
 - [x] Make smiling creator portraits immediately visible in the opening hero viewport
+- [x] Extend continuous whirling motion from the main hero through every final landing section

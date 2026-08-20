@@ -182,8 +182,11 @@
     --scroll-progress: 0;
     --scene-tilt: calc(var(--scroll-progress) * 2.4deg);
     --scene-shift: calc(var(--scroll-progress) * -22px);
+    --scene-arc: 0px;
+    --scene-spin: 0deg;
+    --scene-scale: 1;
     position: relative;
-    transform: translate3d(0, var(--scene-shift), 0) rotate(var(--scene-tilt));
+    transform: translate3d(var(--scene-arc), var(--scene-shift), 0) rotate(var(--scene-tilt)) rotateZ(var(--scene-spin)) scale(var(--scene-scale));
     transform-origin: 50% 0;
     transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
     will-change: transform;
@@ -225,6 +228,7 @@
     .scroll-scene {
       --scene-shift: calc(var(--scroll-progress) * -10px);
       --scene-tilt: calc(var(--scroll-progress) * 1deg);
+      --scene-arc: 0px;
     }
 
     .scroll-stair-card {
