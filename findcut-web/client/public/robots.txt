@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /workspace
+Disallow: /admin
+Sitemap: https://findcutedit-hqvr4hl8.manus.space/sitemap.xml
