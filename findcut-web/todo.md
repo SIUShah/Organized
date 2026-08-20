@@ -27,3 +27,4 @@
 - [x] Create first complete website checkpoint
 - [x] Refresh landing theme with hopeful palette and inclusive smiling creator portraits across varied skin tones and genders
 - [x] Add distinct high-resolution human scenes for conversation groups, collaborating couples, and academic communities across page sections
+- [x] Make smiling creator portraits immediately visible in the opening hero viewport
