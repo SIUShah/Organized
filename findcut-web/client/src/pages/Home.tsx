@@ -8,8 +8,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import EditorWorkspace from "@/components/EditorWorkspace";
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, AudioLines, Check, CircleDollarSign, Clapperboard, Cloud, Film, Github, HeartHandshake, Keyboard, Layers3, LockKeyhole, Menu, MonitorPlay, Scissors, Send, Upload, WandSparkles, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, AudioLines, Check, CircleDollarSign, Clapperboard, Cloud, Film, Github, HeartHandshake, Keyboard, Layers3, LockKeyhole, Menu, MonitorPlay, Scissors, Send, Upload, Volume2, VolumeX, WandSparkles, Waves, X } from "lucide-react";
 
 const QR_ASSET = "/manus-storage/easypaisa_findcut_qr_0c5b4abc.png";
 const CREATOR_ASSET = "/manus-storage/findcut-smiling-creators_5d30efdb.png";
@@ -41,6 +41,31 @@ function answerFor(input: string) {
   return "Ask me about beta access, Easypaisa support, active features, or the roadmap.";
 }
 function Eyebrow({ children }: { children: React.ReactNode }) { return <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300">{children}</p>; }
+
+function AmbientAudio() {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [enabled, setEnabled] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setEnabled(window.localStorage.getItem("findcut-ambient-enabled") === "true");
+  }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = 0.12;
+    if (enabled) {
+      window.localStorage.setItem("findcut-ambient-enabled", "true");
+      void audio.play().catch(() => setEnabled(false));
+    } else {
+      window.localStorage.setItem("findcut-ambient-enabled", "false");
+      audio.pause();
+    }
+  }, [enabled]);
+
+  return <div className="fixed bottom-4 left-4 z-50 flex items-center gap-2 rounded-full border border-cyan-200/20 bg-[#0a1518]/90 p-1.5 shadow-2xl shadow-cyan-950/30 backdrop-blur-xl" aria-label="Ambient water sound controls"><audio ref={audioRef} loop preload="metadata" src="/manus-storage/findcut-water-ambient_dc719379.wav" onCanPlay={() => setReady(true)} /><button type="button" onClick={() => setEnabled((value) => !value)} className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10" aria-pressed={enabled} aria-label={enabled ? "Mute ambient water sound" : "Play ambient water sound"}>{enabled ? <Volume2 className="size-4 text-cyan-200" /> : <VolumeX className="size-4 text-slate-400" />}<span className="hidden sm:inline">{enabled ? "Water ambience on" : "Water ambience off"}</span></button><Waves className={`mr-2 size-4 ${ready ? "text-cyan-300" : "text-slate-600"}`} aria-hidden="true" /></div>;
+}
 
 export default function Home() {
   const { user, loading, logout } = useAuth();
@@ -77,7 +102,7 @@ export default function Home() {
   const submitRequest = (event: React.FormEvent) => { event.preventDefault(); if (form.name && form.email && form.useCase) betaMutation.mutate({ name: form.name, email: form.email, useCase: form.useCase }); };
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
 
-  return <div className="min-h-screen overflow-x-hidden bg-[#0a1518] text-slate-100 selection:bg-amber-200 selection:text-slate-950">
+  return <div className="min-h-screen overflow-x-hidden bg-[#0a1518] text-slate-100 selection:bg-amber-200 selection:text-slate-950"><AmbientAudio />
     <div className="pointer-events-none fixed inset-0 -z-0 opacity-80 [background-image:radial-gradient(circle_at_12%_8%,rgba(251,191,36,0.18),transparent_27%),radial-gradient(circle_at_82%_18%,rgba(244,114,182,0.16),transparent_25%),radial-gradient(circle_at_55%_72%,rgba(52,211,153,0.12),transparent_30%),linear-gradient(rgba(226,232,240,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(226,232,240,0.035)_1px,transparent_1px)] [background-size:auto,auto,44px_44px,44px_44px]" />
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0a1518]/88 backdrop-blur-xl"><div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8"><a href="#top" className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl border border-cyan-300/30 bg-cyan-300/10 text-cyan-200"><Clapperboard className="size-5" /></span><span><span className="block font-semibold">Find<span className="text-cyan-300">Cut</span></span><span className="block text-[10px] uppercase tracking-[0.22em] text-slate-500">AI editor beta</span></span></a><nav className="hidden items-center gap-7 text-sm text-slate-300 md:flex"><a href="#workspace">Workspace</a><a href="#funding">Support</a><a href="#beta">Beta access</a><a href="#roadmap">Roadmap</a></nav><div className="hidden items-center gap-3 sm:flex">{user ? <Button variant="outline" className="border-white/15 bg-white/5 text-slate-100" onClick={() => logout()}>Sign out</Button> : <Button variant="outline" className="border-white/15 bg-white/5 text-slate-100" onClick={() => startLogin()}>Sign in</Button>}<Button className="bg-cyan-300 text-slate-950 hover:bg-cyan-200" onClick={() => scrollTo("beta")}>Request beta <ArrowRight className="ml-2 size-4" /></Button></div><button className="rounded-xl border border-white/10 p-2 sm:hidden" onClick={() => setMenuOpen(!menuOpen)} aria-label="Toggle menu">{menuOpen ? <X className="size-5" /> : <Menu className="size-5" />}</button></div>{menuOpen && <div className="border-t border-white/10 px-4 py-4 sm:hidden"><div className="grid gap-3 text-sm text-slate-300"><a href="#workspace">Workspace</a><a href="#funding">Support</a><a href="#beta">Beta access</a><a href="#roadmap">Roadmap</a><Button onClick={() => startLogin()} className="bg-cyan-300 text-slate-950">Sign in</Button></div></div>}</header>
     <main className="relative z-10">

@@ -32,3 +32,6 @@
 - [x] Implement robust SEO with SSR-aware metadata, canonical URLs, structured data, robots, sitemap, and social previews
 - [x] Add protected CTO dashboard with Manus login control, Discord status, beta forwarding controls, and NLP communication panel
 - [x] Harden CTO dashboard frontend/backend into production-quality authenticated flows with real validation and error handling
+- [x] Fix audit-identified preview playback and cloud-save feedback
+- [x] Audit all FindCut features, dynamics, integrations, and production limitations end to end
+- [x] Add optional subtle ambient music to the public FindCut site with mute control and safe playback defaults
