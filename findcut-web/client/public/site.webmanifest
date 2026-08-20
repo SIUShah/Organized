@@ -1,0 +1,12 @@
+{
+  "name": "FindCut — Creator-first video editor",
+  "short_name": "FindCut",
+  "description": "A Pakistan-first creator-focused video editor beta for multitrack editing and collaborative media workflows.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#071114",
+  "theme_color": "#0a1518",
+  "lang": "en",
+  "categories": ["video", "multimedia", "productivity"]
+}
