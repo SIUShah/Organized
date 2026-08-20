@@ -1,6 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { BetaRequest, InsertBetaRequest, InsertUser, betaRequests, users } from "../drizzle/schema";
+import { BetaRequest, InsertBetaRequest, InsertMediaAsset, InsertProject, InsertUser, MediaAsset, Project, betaRequests, mediaAssets, projects, users } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -108,6 +108,34 @@ export async function listBetaRequests() {
     return [];
   }
   return db.select().from(betaRequests).orderBy(desc(betaRequests.createdAt));
+}
+
+export async function createProject(project: InsertProject): Promise<Project | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.insert(projects).values(project);
+  const rows = await db.select().from(projects).where(eq(projects.id, Number(result[0].insertId))).limit(1);
+  return rows[0];
+}
+
+export async function listProjects(ownerOpenId: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(projects).where(eq(projects.ownerOpenId, ownerOpenId)).orderBy(desc(projects.updatedAt));
+}
+
+export async function createMediaAsset(asset: InsertMediaAsset): Promise<MediaAsset | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.insert(mediaAssets).values(asset);
+  const rows = await db.select().from(mediaAssets).where(eq(mediaAssets.id, Number(result[0].insertId))).limit(1);
+  return rows[0];
+}
+
+export async function listMediaAssets(ownerOpenId: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(mediaAssets).where(eq(mediaAssets.ownerOpenId, ownerOpenId)).orderBy(desc(mediaAssets.createdAt));
 }
 
 // TODO: add feature queries here as your schema grows.

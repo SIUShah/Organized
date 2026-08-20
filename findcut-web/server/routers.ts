@@ -1,8 +1,9 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { adminProcedure, publicProcedure, router } from "./_core/trpc";
-import { createBetaRequest, listBetaRequests } from "./db";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { createBetaRequest, createMediaAsset, createProject, listBetaRequests, listMediaAssets, listProjects } from "./db";
+import { storagePut } from "./storage";
 import { z } from "zod";
 
 export const appRouter = router({
@@ -19,6 +20,23 @@ export const appRouter = router({
     }),
   }),
 
+  projects: router({
+    list: protectedProcedure.query(({ ctx }) => listProjects(ctx.user.openId)),
+    create: protectedProcedure
+      .input(z.object({ name: z.string().trim().min(1).max(160), document: z.string().max(200000) }))
+      .mutation(({ ctx, input }) => createProject({ ownerOpenId: ctx.user.openId, ...input })),
+  }),
+  media: router({
+    list: protectedProcedure.query(({ ctx }) => listMediaAssets(ctx.user.openId)),
+    upload: protectedProcedure
+      .input(z.object({ name: z.string().trim().min(1).max(255), mimeType: z.string().trim().min(1).max(120), base64: z.string().max(34000000) }))
+      .mutation(async ({ ctx, input }) => {
+        const buffer = Buffer.from(input.base64, "base64");
+        if (buffer.byteLength > 25_000_000) throw new Error("Beta uploads are limited to 25 MB.");
+        const stored = await storagePut(`findcut/${ctx.user.openId}/${input.name}`, buffer, input.mimeType);
+        return createMediaAsset({ ownerOpenId: ctx.user.openId, name: input.name, mimeType: input.mimeType, sizeBytes: buffer.byteLength, storageKey: stored.key, storageUrl: stored.url });
+      }),
+  }),
   beta: router({
     submit: publicProcedure
       .input(z.object({

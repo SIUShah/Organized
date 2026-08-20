@@ -8,6 +8,20 @@
       "when": 1787240062992,
       "tag": "0000_sour_enchantress",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1787240467603,
+      "tag": "0001_soft_typhoid_mary",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1787240784126,
+      "tag": "0002_solid_smiling_tiger",
+      "breakpoints": true
     }
   ]
 }

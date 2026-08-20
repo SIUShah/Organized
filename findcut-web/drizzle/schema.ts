@@ -39,4 +39,30 @@ export const betaRequests = mysqlTable("betaRequests", {
 export type BetaRequest = typeof betaRequests.$inferSelect;
 export type InsertBetaRequest = typeof betaRequests.$inferInsert;
 
-// TODO: Add your tables here
+export const projects = mysqlTable("projects", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerOpenId: varchar("ownerOpenId", { length: 64 }).notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  document: text("document").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Project = typeof projects.$inferSelect;
+export type InsertProject = typeof projects.$inferInsert;
+
+export const mediaAssets = mysqlTable("mediaAssets", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerOpenId: varchar("ownerOpenId", { length: 64 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  mimeType: varchar("mimeType", { length: 120 }).notNull(),
+  sizeBytes: int("sizeBytes").notNull(),
+  storageKey: varchar("storageKey", { length: 512 }).notNull(),
+  storageUrl: varchar("storageUrl", { length: 768 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type MediaAsset = typeof mediaAssets.$inferSelect;
+export type InsertMediaAsset = typeof mediaAssets.$inferInsert;
+
+// TODO: Add feature queries here as your schema grows.

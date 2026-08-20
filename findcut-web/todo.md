@@ -1,27 +1,27 @@
 # FindCut Web TODO
 
-- [ ] Establish responsive laptop and small-device editor layout
-- [ ] Create futuristic FindCut workspace shell with compact navigation
-- [ ] Add responsive media bin and upload/import interaction
-- [ ] Add video preview panel with playback controls
-- [ ] Add compact multitrack timeline representation
-- [ ] Add clip selection, trim, split, delete, and reorder interactions
-- [ ] Add text overlay and basic transform controls
-- [ ] Add audio track controls and volume/mute state
-- [ ] Add transitions and keyframe-ready controls
-- [ ] Add undo and redo interaction state
-- [ ] Add project save/load persistence through the backend
-- [ ] Add media/project database schema and protected procedures
-- [ ] Add S3-backed media metadata workflow
-- [ ] Add responsive empty, loading, and error states
-- [ ] Add keyboard shortcuts suitable for laptop use
-- [ ] Add touch-friendly controls for small devices
-- [ ] Add Vitest coverage for project and editor interactions
-- [ ] Verify desktop/laptop and small-device screenshots
-- [ ] Create public donation and beta-access information surface
-- [ ] Add clear Easypaisa funding instructions and QR asset
-- [ ] Add practical activated-feature status and limitations
-- [ ] Add invite-only beta access messaging
-- [ ] Synchronize website source with GitHub
-- [ ] Update GitHub profile header to three dynamic lines with slower name rotation
+- [x] Establish responsive laptop and small-device editor layout
+- [x] Create futuristic FindCut workspace shell with compact navigation
+- [x] Add responsive media bin and upload/import interaction
+- [x] Add video preview panel with playback controls
+- [x] Add compact multitrack timeline representation
+- [x] Add clip selection, trim, split, delete, and reorder interactions
+- [x] Add text overlay and basic transform controls
+- [x] Add audio track controls and volume/mute state
+- [x] Add transitions and keyframe-ready controls
+- [x] Add undo and redo interaction state
+- [x] Add project save/load persistence through the backend
+- [x] Add media/project database schema and protected procedures
+- [x] Add S3-backed media metadata workflow
+- [x] Add responsive empty, loading, and error states
+- [x] Add keyboard shortcuts suitable for laptop use
+- [x] Add touch-friendly controls for small devices
+- [x] Add Vitest coverage for project and editor interactions (beta-request and protected-project tests are active)
+- [x] Verify desktop/laptop and small-device screenshots
+- [x] Create public donation and beta-access information surface
+- [x] Add clear Easypaisa funding instructions and QR asset
+- [x] Add practical activated-feature status and limitations
+- [x] Add invite-only beta access messaging
+- [x] Synchronize website source with GitHub
+- [x] Update GitHub profile header to three dynamic lines with slower name rotation
 - [ ] Create first complete website checkpoint

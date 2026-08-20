@@ -175,3 +175,70 @@
     }
   }
 }
+
+
+@layer components {
+  .scroll-scene {
+    --scroll-progress: 0;
+    --scene-tilt: calc(var(--scroll-progress) * 2.4deg);
+    --scene-shift: calc(var(--scroll-progress) * -22px);
+    position: relative;
+    transform: translate3d(0, var(--scene-shift), 0) rotate(var(--scene-tilt));
+    transform-origin: 50% 0;
+    transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+    will-change: transform;
+  }
+
+  .scroll-scene::before {
+    content: "";
+    position: absolute;
+    inset: 12% 3% auto;
+    height: 1px;
+    pointer-events: none;
+    opacity: calc(0.08 + (abs(var(--scroll-progress)) * 0.16));
+    background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.65), transparent);
+    transform: translateX(calc(var(--scroll-progress) * 38px));
+  }
+
+  .scroll-stair-card {
+    --card-step: calc(var(--scroll-progress) * var(--stair-factor, 1));
+    transform: translate3d(calc(var(--card-step) * 18px), calc(var(--card-step) * -10px), 0) rotate(calc(var(--card-step) * 0.7deg));
+    transition: transform 220ms cubic-bezier(0.23, 1, 0.32, 1), background-color 220ms ease;
+    will-change: transform;
+  }
+
+  .scroll-stair-card:nth-child(2) { --stair-factor: -0.7; }
+  .scroll-stair-card:nth-child(3) { --stair-factor: 0.55; }
+  .scroll-stair-card:nth-child(4) { --stair-factor: -0.35; }
+
+  .scroll-orbit-line {
+    animation: findcut-orbit 16s linear infinite;
+    transform-origin: center;
+  }
+
+  @keyframes findcut-orbit {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  @media (max-width: 640px) {
+    .scroll-scene {
+      --scene-shift: calc(var(--scroll-progress) * -10px);
+      --scene-tilt: calc(var(--scroll-progress) * 1deg);
+    }
+
+    .scroll-stair-card {
+      transform: translate3d(0, calc(var(--card-step) * -7px), 0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scroll-scene,
+    .scroll-stair-card,
+    .scroll-orbit-line {
+      animation: none !important;
+      transform: none !important;
+      transition: none !important;
+    }
+  }
+}
